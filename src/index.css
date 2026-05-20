@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-gray-900 font-sans;
+    /* Prevent body scroll when modal is open */
+    overscroll-behavior: none;
+  }
+
+  * {
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+@layer utilities {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pb-nav {
+    /* Content padding to clear the 64px bottom nav + safe area */
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+}
+
+/* Smooth scrolling inside app */
+#root {
+  min-height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+}

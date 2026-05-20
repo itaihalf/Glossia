@@ -1,0 +1,398 @@
+import { useState, useRef, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft, CheckCircle } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { useStory, useCompleteStory, type CompletionResult } from '@/hooks/useStories'
+import { useUpdateReadingStats } from '@/hooks/useClasses'
+import { useAddWord } from '@/hooks/useWordBank'
+import { normalizeWord, type NormalizedWord } from '@/lib/ai'
+import { WordPopupSheet, type WordLookupState, type AddState } from '@/components/stories/WordPopupSheet'
+import { FinishedReadingSheet } from '@/components/stories/FinishedReadingSheet'
+import { Button } from '@/components/ui/Button'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { cn } from '@/lib/utils'
+import { getLevelLabel, getLanguageName } from '@/lib/utils'
+
+// ─── Translation mode ─────────────────────────────────────────────────────────
+
+type TranslationMode = 'original' | 'translation' | 'both'
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function StoryReaderPage() {
+  const { storyId } = useParams<{ storyId: string }>()
+  const navigate = useNavigate()
+  const { profile, refreshProfile } = useAuth()
+
+  const { data: story, isLoading } = useStory(storyId)
+  const { mutateAsync: completeStory,     isPending: isCompleting }  = useCompleteStory()
+  const { mutateAsync: updateReadingStats, isPending: isUpdating }   = useUpdateReadingStats()
+  const { mutateAsync: addWord } = useAddWord()
+
+  // Translation mode
+  const [mode, setMode] = useState<TranslationMode>('original')
+
+  // Word popup state
+  const [activeWord, setActiveWord]   = useState<string | null>(null)
+  const [popupState, setPopupState]   = useState<WordLookupState>({ phase: 'closed' })
+  const [addState, setAddState]       = useState<AddState>('idle')
+  const wordCache = useRef<Map<string, NormalizedWord>>(new Map())
+
+  // Completion state
+  const [finishedOpen, setFinishedOpen]         = useState(false)
+  const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null)
+  const [completeError, setCompleteError]       = useState<string | null>(null)
+
+  // ── Word click handler ──────────────────────────────────────────────────────
+
+  const handleWordClick = useCallback(async (word: string) => {
+    if (!story) return
+    setActiveWord(word)
+    setAddState('idle')
+
+    // Serve from cache if available
+    const cached = wordCache.current.get(word)
+    if (cached) {
+      setPopupState({
+        phase: 'result',
+        word,
+        baseForm: cached.base_form,
+        translation: cached.translation,
+        pos: cached.part_of_speech,
+        example: cached.example_sentence,
+      })
+      return
+    }
+
+    setPopupState({ phase: 'loading', word })
+
+    try {
+      const result = await normalizeWord(word, story.language)
+      wordCache.current.set(word, result)
+      setPopupState({
+        phase: 'result',
+        word,
+        baseForm: result.base_form,
+        translation: result.translation,
+        pos: result.part_of_speech,
+        example: result.example_sentence,
+      })
+    } catch (err) {
+      setPopupState({
+        phase: 'error',
+        word,
+        message: err instanceof Error ? err.message : 'Could not look up this word.',
+      })
+    }
+  }, [story])
+
+  // ── Add to word bank ────────────────────────────────────────────────────────
+
+  const handleAddToWordBank = useCallback(async () => {
+    if (popupState.phase !== 'result' || !profile || !story) return
+    setAddState('adding')
+    try {
+      await addWord({
+        user_id: profile.id,
+        language: story.language,
+        word: popupState.baseForm,
+        base_form: popupState.baseForm,
+        translation: popupState.translation,
+        example_sentence: popupState.example || null,
+        encountered_forms:
+          popupState.baseForm !== popupState.word ? [popupState.word] : [],
+      })
+      setAddState('added')
+    } catch (err) {
+      setAddState(err instanceof Error && err.message === 'DUPLICATE' ? 'duplicate' : 'error')
+    }
+  }, [popupState, profile, story, addWord])
+
+  const closePopup = useCallback(() => {
+    setPopupState({ phase: 'closed' })
+    setActiveWord(null)
+    setAddState('idle')
+  }, [])
+
+  // ── Finish reading ──────────────────────────────────────────────────────────
+
+  // A class story belongs to the teacher, not the student — update stats only
+  const isOwnStory = !story?.class_id || story?.user_id === profile?.id
+
+  const handleFinishedReading = async () => {
+    if (!story || !profile) return
+    setCompleteError(null)
+    try {
+      let result: CompletionResult
+      if (isOwnStory) {
+        result = await completeStory({ storyId: story.id, profile })
+      } else {
+        result = await updateReadingStats({ profile })
+      }
+      await refreshProfile()
+      setCompletionResult(result)
+      setFinishedOpen(true)
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : 'Could not mark story as complete.')
+    }
+  }
+
+  const handleReview = () => {
+    setFinishedOpen(false)
+    navigate(`/student/review/${story?.id}`)
+  }
+
+  const handleSkip = () => {
+    setFinishedOpen(false)
+    navigate('/student/stories')
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-dvh gap-3">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
+  if (!story) {
+    return (
+      <div className="px-4 pt-10 text-center">
+        <p className="text-gray-500">Story not found.</p>
+        <button
+          onClick={() => navigate('/student/stories')}
+          className="mt-4 text-brand-600 font-medium text-sm"
+        >
+          Back to Stories
+        </button>
+      </div>
+    )
+  }
+
+  const langName = getLanguageName(story.language)
+
+  return (
+    <div className="min-h-dvh">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          <button
+            onClick={() => navigate('/student/stories')}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-gray-900 text-base truncate">{story.title}</h1>
+            <p className="text-xs text-gray-400">
+              {langName} · {getLevelLabel(story.level)}
+            </p>
+          </div>
+          {story.completed && (
+            <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+          )}
+        </div>
+
+        {/* Translation toggle */}
+        {story.translation && (
+          <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-xl text-xs">
+            {(['original', 'translation', 'both'] as TranslationMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'flex-1 py-1.5 rounded-lg font-semibold capitalize transition-all duration-100',
+                  mode === m
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700',
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Story content ───────────────────────────────────────────────────── */}
+      <div className="px-5 pt-6 pb-nav space-y-6">
+        <StoryContent
+          story={story}
+          mode={mode}
+          activeWord={activeWord}
+          onWordClick={handleWordClick}
+        />
+
+        {/* Tap hint */}
+        {mode !== 'translation' && (
+          <p className="text-xs text-center text-gray-400">
+            Tap any word to see its translation
+          </p>
+        )}
+
+        {/* Complete error */}
+        {completeError && (
+          <div className="text-sm text-red-600 text-center">{completeError}</div>
+        )}
+
+        {/* Finished reading button */}
+        {(!story.completed || !isOwnStory) ? (
+          <Button
+            fullWidth
+            size="lg"
+            onClick={handleFinishedReading}
+            loading={isCompleting || isUpdating}
+            leftIcon={<CheckCircle className="w-5 h-5" />}
+          >
+            Finished Reading
+          </Button>
+        ) : (
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center gap-2 text-emerald-600 font-semibold">
+              <CheckCircle className="w-5 h-5" />
+              <span>Story completed</span>
+            </div>
+            <button
+              onClick={() => navigate('/student/stories')}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Back to Stories
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Word popup ──────────────────────────────────────────────────────── */}
+      <WordPopupSheet
+        state={popupState}
+        addState={addState}
+        onClose={closePopup}
+        onAddToWordBank={handleAddToWordBank}
+      />
+
+      {/* ── Finished sheet ──────────────────────────────────────────────────── */}
+      {profile && (
+        <FinishedReadingSheet
+          open={finishedOpen}
+          result={completionResult}
+          profile={profile}
+          onReview={handleReview}
+          onSkip={handleSkip}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Story content renderer ───────────────────────────────────────────────────
+
+function StoryContent({
+  story,
+  mode,
+  activeWord,
+  onWordClick,
+}: {
+  story: { content: string; translation: string | null }
+  mode: TranslationMode
+  activeWord: string | null
+  onWordClick: (word: string) => void
+}) {
+  const origParas  = story.content.split('\n\n').filter(p => p.trim())
+  const transParas = (story.translation ?? '').split('\n\n').filter(p => p.trim())
+
+  if (mode === 'translation') {
+    return (
+      <div className="space-y-5">
+        {transParas.map((para, i) => (
+          <p key={i} className="text-gray-700 leading-relaxed text-base">{para}</p>
+        ))}
+      </div>
+    )
+  }
+
+  if (mode === 'original') {
+    return (
+      <div className="space-y-5">
+        {origParas.map((para, i) => (
+          <StoryParagraph
+            key={i}
+            text={para}
+            activeWord={activeWord}
+            onWordClick={onWordClick}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  // Both: interleave
+  return (
+    <div className="space-y-6">
+      {origParas.map((para, i) => (
+        <div key={i} className="space-y-2">
+          <StoryParagraph
+            text={para}
+            activeWord={activeWord}
+            onWordClick={onWordClick}
+          />
+          {transParas[i] && (
+            <p className="text-sm text-gray-400 italic leading-relaxed pl-3 border-l-2 border-gray-100">
+              {transParas[i]}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Paragraph with tappable words ───────────────────────────────────────────
+
+// Matches any sequence that contains at least one Unicode letter
+const WORD_RE = /[\p{L}\p{N}]/u
+
+function cleanWord(chunk: string): string {
+  return chunk.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+}
+
+function StoryParagraph({
+  text,
+  activeWord,
+  onWordClick,
+}: {
+  text: string
+  activeWord: string | null
+  onWordClick: (word: string) => void
+}) {
+  const chunks = text.split(/(\s+)/u).filter(c => c.length > 0)
+
+  return (
+    <p className="leading-relaxed text-gray-800 text-lg font-serif">
+      {chunks.map((chunk, i) => {
+        if (/^\s+$/.test(chunk)) return <span key={i}> </span>
+
+        const clean = cleanWord(chunk)
+        if (!clean || !WORD_RE.test(clean)) return <span key={i}>{chunk}</span>
+
+        const isActive = activeWord === clean
+
+        return (
+          <button
+            key={i}
+            onClick={() => onWordClick(clean)}
+            className={cn(
+              'inline rounded-sm px-0.5 transition-colors duration-100 cursor-pointer',
+              isActive
+                ? 'bg-brand-200 text-brand-900 rounded'
+                : 'hover:bg-brand-50 hover:text-brand-800 active:bg-brand-100',
+            )}
+          >
+            {chunk}
+          </button>
+        )
+      })}
+    </p>
+  )
+}
