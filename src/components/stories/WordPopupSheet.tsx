@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { X, BookPlus, Check, AlertCircle } from 'lucide-react'
+import { X, BookPlus, Check, AlertCircle, RotateCcw } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
@@ -13,17 +13,21 @@ export type WordLookupState =
   | { phase: 'error'; word: string; message: string }
 
 export type AddState = 'idle' | 'adding' | 'added' | 'duplicate' | 'error'
+export type TransferState = 'idle' | 'transferring' | 'transferred' | 'error'
 
 interface WordPopupSheetProps {
   state: WordLookupState
   addState: AddState
   onClose: () => void
   onAddToWordBank: () => void
+  existingStatus: 'learning' | 'known' | null
+  transferState: TransferState
+  onTransferToLearning: () => void
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function WordPopupSheet({ state, addState, onClose, onAddToWordBank }: WordPopupSheetProps) {
+export function WordPopupSheet({ state, addState, onClose, onAddToWordBank, existingStatus, transferState, onTransferToLearning }: WordPopupSheetProps) {
   const open = state.phase !== 'closed'
 
   // Lock scroll when open
@@ -42,13 +46,10 @@ export function WordPopupSheet({ state, addState, onClose, onAddToWordBank }: Wo
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] px-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
-      <div className="relative w-full max-w-[480px] bg-white rounded-t-3xl shadow-2xl px-5 pt-3 pb-8">
-        {/* Drag handle */}
-        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
-
+      <div className="relative w-full max-w-[440px] bg-white rounded-2xl shadow-2xl px-5 pt-4 pb-5">
         {/* Header row */}
         <div className="flex items-center justify-between mb-4">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
@@ -93,8 +94,19 @@ export function WordPopupSheet({ state, addState, onClose, onAddToWordBank }: Wo
               </p>
             )}
 
-            {/* Add to word bank button */}
-            <AddButton addState={addState} onClick={onAddToWordBank} />
+            {/* Action area: depends on word's existing status */}
+            {addState !== 'idle' ? (
+              <AddButton addState={addState} onClick={onAddToWordBank} />
+            ) : existingStatus === 'learning' ? (
+              <div className="flex items-center gap-2 py-2 px-3 rounded-xl bg-blue-50 text-blue-700 text-sm font-medium">
+                <Check className="w-4 h-4 shrink-0" />
+                Already in the learning list
+              </div>
+            ) : existingStatus === 'known' ? (
+              <TransferButton transferState={transferState} onClick={onTransferToLearning} />
+            ) : (
+              <AddButton addState={addState} onClick={onAddToWordBank} />
+            )}
           </div>
         )}
 
@@ -107,6 +119,36 @@ export function WordPopupSheet({ state, addState, onClose, onAddToWordBank }: Wo
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Transfer button ──────────────────────────────────────────────────────────
+
+function TransferButton({ transferState, onClick }: { transferState: TransferState; onClick: () => void }) {
+  if (transferState === 'transferred') {
+    return (
+      <div className="flex items-center gap-2 py-2 px-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-medium">
+        <Check className="w-4 h-4 shrink-0" />
+        Moved to learning list!
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      fullWidth
+      variant="secondary"
+      disabled={transferState === 'transferring'}
+      onClick={onClick}
+    >
+      {transferState === 'transferring' ? (
+        <><LoadingSpinner size="sm" /> Moving…</>
+      ) : transferState === 'error' ? (
+        'Could not transfer — try again'
+      ) : (
+        <><RotateCcw className="w-4 h-4" /> Transfer back to learning?</>
+      )}
+    </Button>
   )
 }
 

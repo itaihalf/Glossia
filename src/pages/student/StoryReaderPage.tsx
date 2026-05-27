@@ -1,13 +1,14 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useStory, useCompleteStory, type CompletionResult } from '@/hooks/useStories'
 import { useUpdateReadingStats } from '@/hooks/useClasses'
-import { useAddWord } from '@/hooks/useWordBank'
+import { useAddWord, useWordBankItems, useUpdateWordStatus } from '@/hooks/useWordBank'
 import { normalizeWord, type NormalizedWord } from '@/lib/ai'
-import { WordPopupSheet, type WordLookupState, type AddState } from '@/components/stories/WordPopupSheet'
+import { WordPopupSheet, type WordLookupState, type AddState, type TransferState } from '@/components/stories/WordPopupSheet'
 import { FinishedReadingSheet } from '@/components/stories/FinishedReadingSheet'
+import { FlashcardSession } from '@/components/review/FlashcardSession'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
@@ -28,20 +29,53 @@ export default function StoryReaderPage() {
   const { mutateAsync: completeStory,     isPending: isCompleting }  = useCompleteStory()
   const { mutateAsync: updateReadingStats, isPending: isUpdating }   = useUpdateReadingStats()
   const { mutateAsync: addWord } = useAddWord()
+  const { mutateAsync: updateWordStatus } = useUpdateWordStatus()
+
+  // Fetch learning and known words for this story's language
+  const { data: learningWords } = useWordBankItems(profile?.id, story?.language ?? '', 'learning')
+  const { data: knownWords }    = useWordBankItems(profile?.id, story?.language ?? '', 'known')
+
+  // Practice word set — highlighted in the reader
+  const practiceSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const entry of learningWords ?? []) {
+      set.add(entry.base_form.toLowerCase())
+      for (const form of entry.encountered_forms ?? []) {
+        set.add(form.toLowerCase())
+      }
+    }
+    return set
+  }, [learningWords])
+
+  // Map of base_form → { id, status } for all saved words
+  const wordBankMap = useMemo(() => {
+    const map = new Map<string, { id: string; status: 'learning' | 'known' }>()
+    for (const entry of learningWords ?? []) map.set(entry.base_form.toLowerCase(), { id: entry.id, status: 'learning' })
+    for (const entry of knownWords ?? [])    map.set(entry.base_form.toLowerCase(), { id: entry.id, status: 'known' })
+    return map
+  }, [learningWords, knownWords])
 
   // Translation mode
   const [mode, setMode] = useState<TranslationMode>('original')
 
   // Word popup state
-  const [activeWord, setActiveWord]   = useState<string | null>(null)
-  const [popupState, setPopupState]   = useState<WordLookupState>({ phase: 'closed' })
-  const [addState, setAddState]       = useState<AddState>('idle')
+  const [activeWord, setActiveWord]     = useState<string | null>(null)
+  const [popupState, setPopupState]     = useState<WordLookupState>({ phase: 'closed' })
+  const [addState, setAddState]         = useState<AddState>('idle')
+  const [transferState, setTransferState] = useState<TransferState>('idle')
   const wordCache = useRef<Map<string, NormalizedWord>>(new Map())
 
-  // Completion state
-  const [finishedOpen, setFinishedOpen]         = useState(false)
+  // Existing bank entry for the word currently shown in the popup
+  const existingWordEntry = useMemo(() => {
+    if (popupState.phase !== 'result') return null
+    return wordBankMap.get(popupState.baseForm.toLowerCase()) ?? null
+  }, [popupState, wordBankMap])
+
+  // Completion state — finishedOpen is derived so it's always in sync with the result
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null)
+  const finishedOpen = completionResult !== null
   const [completeError, setCompleteError]       = useState<string | null>(null)
+  const [flashcardOpen, setFlashcardOpen]       = useState(false)
 
   // ── Word click handler ──────────────────────────────────────────────────────
 
@@ -49,6 +83,7 @@ export default function StoryReaderPage() {
     if (!story) return
     setActiveWord(word)
     setAddState('idle')
+    setTransferState('idle')
 
     // Serve from cache if available
     const cached = wordCache.current.get(word)
@@ -108,10 +143,29 @@ export default function StoryReaderPage() {
     }
   }, [popupState, profile, story, addWord])
 
+  // ── Transfer known → learning ───────────────────────────────────────────────
+
+  const handleTransferToLearning = useCallback(async () => {
+    if (!existingWordEntry || !profile || !story) return
+    setTransferState('transferring')
+    try {
+      await updateWordStatus({
+        id: existingWordEntry.id,
+        userId: profile.id,
+        language: story.language,
+        status: 'learning',
+      })
+      setTransferState('transferred')
+    } catch {
+      setTransferState('error')
+    }
+  }, [existingWordEntry, profile, story, updateWordStatus])
+
   const closePopup = useCallback(() => {
     setPopupState({ phase: 'closed' })
     setActiveWord(null)
     setAddState('idle')
+    setTransferState('idle')
   }, [])
 
   // ── Finish reading ──────────────────────────────────────────────────────────
@@ -120,6 +174,7 @@ export default function StoryReaderPage() {
   const isOwnStory = !story?.class_id || story?.user_id === profile?.id
 
   const handleFinishedReading = async () => {
+    console.log('[Glossia] handleFinishedReading called', { hasStory: !!story, hasProfile: !!profile })
     if (!story || !profile) return
     setCompleteError(null)
     try {
@@ -129,21 +184,22 @@ export default function StoryReaderPage() {
       } else {
         result = await updateReadingStats({ profile })
       }
-      await refreshProfile()
+      console.log("Complete Story Result:", result)
       setCompletionResult(result)
-      setFinishedOpen(true)
+      await refreshProfile()
     } catch (err) {
       setCompleteError(err instanceof Error ? err.message : 'Could not mark story as complete.')
     }
   }
 
   const handleReview = () => {
-    setFinishedOpen(false)
-    navigate(`/student/review/${story?.id}`)
+    console.log('[Glossia] handleReview called')
+    setCompletionResult(null)
+    setFlashcardOpen(true)
   }
 
   const handleSkip = () => {
-    setFinishedOpen(false)
+    setCompletionResult(null)
     navigate('/student/stories')
   }
 
@@ -172,6 +228,8 @@ export default function StoryReaderPage() {
   }
 
   const langName = getLanguageName(story.language)
+
+  console.log('[Glossia] render — FlashcardSession gate:', { flashcardOpen, hasProfile: !!profile, hasStory: !!story })
 
   return (
     <div className="min-h-dvh">
@@ -222,6 +280,7 @@ export default function StoryReaderPage() {
           story={story}
           mode={mode}
           activeWord={activeWord}
+          practiceSet={practiceSet}
           onWordClick={handleWordClick}
         />
 
@@ -270,6 +329,9 @@ export default function StoryReaderPage() {
         addState={addState}
         onClose={closePopup}
         onAddToWordBank={handleAddToWordBank}
+        existingStatus={existingWordEntry?.status ?? null}
+        transferState={transferState}
+        onTransferToLearning={handleTransferToLearning}
       />
 
       {/* ── Finished sheet ──────────────────────────────────────────────────── */}
@@ -282,6 +344,20 @@ export default function StoryReaderPage() {
           onSkip={handleSkip}
         />
       )}
+
+      {/* ── Inline flashcard review ─────────────────────────────────────────── */}
+      {profile && story && (
+        <FlashcardSession
+          storyId={story.id}
+          userId={profile.id}
+          wordIds={(story.words_used_from_bank ?? []) as string[]}
+          open={flashcardOpen}
+          onDone={() => {
+            setFlashcardOpen(false)
+            navigate('/student/stories')
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -292,11 +368,13 @@ function StoryContent({
   story,
   mode,
   activeWord,
+  practiceSet,
   onWordClick,
 }: {
   story: { content: string; translation: string | null }
   mode: TranslationMode
   activeWord: string | null
+  practiceSet: Set<string>
   onWordClick: (word: string) => void
 }) {
   const origParas  = story.content.split('\n\n').filter(p => p.trim())
@@ -320,6 +398,7 @@ function StoryContent({
             key={i}
             text={para}
             activeWord={activeWord}
+            practiceSet={practiceSet}
             onWordClick={onWordClick}
           />
         ))}
@@ -335,6 +414,7 @@ function StoryContent({
           <StoryParagraph
             text={para}
             activeWord={activeWord}
+            practiceSet={practiceSet}
             onWordClick={onWordClick}
           />
           {transParas[i] && (
@@ -360,10 +440,12 @@ function cleanWord(chunk: string): string {
 function StoryParagraph({
   text,
   activeWord,
+  practiceSet,
   onWordClick,
 }: {
   text: string
   activeWord: string | null
+  practiceSet: Set<string>
   onWordClick: (word: string) => void
 }) {
   const chunks = text.split(/(\s+)/u).filter(c => c.length > 0)
@@ -376,17 +458,21 @@ function StoryParagraph({
         const clean = cleanWord(chunk)
         if (!clean || !WORD_RE.test(clean)) return <span key={i}>{chunk}</span>
 
-        const isActive = activeWord === clean
+        const isActive   = activeWord === clean
+        const isPractice = practiceSet.has(clean.toLowerCase())
 
         return (
           <button
             key={i}
             onClick={() => onWordClick(clean)}
             className={cn(
-              'inline rounded-sm px-0.5 transition-colors duration-100 cursor-pointer',
+              'inline transition-colors duration-100 cursor-pointer',
               isActive
-                ? 'bg-brand-200 text-brand-900 rounded'
-                : 'hover:bg-brand-50 hover:text-brand-800 active:bg-brand-100',
+                ? 'bg-brand-200 text-brand-900 rounded px-1'
+                : [
+                    isPractice && 'bg-blue-100/80 rounded px-1',
+                    'hover:bg-brand-50 hover:text-brand-800 active:bg-brand-100 hover:rounded hover:px-0.5',
+                  ],
             )}
           >
             {chunk}

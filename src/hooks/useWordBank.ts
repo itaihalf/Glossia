@@ -124,11 +124,7 @@ export function useUpdateWordStatus() {
 
 // ─── Review word ─────────────────────────────────────────────────────────────
 
-// Confidence thresholds for spaced-repetition promotion
-const COMFORTABLE_GAIN   = 20   // +20 per correct response
-const PRACTICE_LOSS      = 10   // −10 per practice response
-const KNOWN_CONFIDENCE   = 80   // threshold to mark as known
-const KNOWN_SUCCESSES    = 3    // minimum successful reviews before promotion
+const STREAK_TO_KNOWN = 5
 
 export interface ReviewWordInput {
   entry: WordBankEntry
@@ -137,7 +133,7 @@ export interface ReviewWordInput {
 }
 
 export interface ReviewWordResult {
-  newConfidence: number
+  newStreak: number
   movedToKnown: boolean
 }
 
@@ -145,32 +141,27 @@ export function useReviewWord() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ entry, response }: ReviewWordInput): Promise<ReviewWordResult> => {
-      const delta        = response === 'comfortable' ? COMFORTABLE_GAIN : -PRACTICE_LOSS
-      const newConf      = Math.min(100, Math.max(0, entry.confidence + delta))
-      const newSuccesses = response === 'comfortable'
-        ? entry.successful_reviews + 1
-        : entry.successful_reviews
-      const movedToKnown =
-        response === 'comfortable' &&
-        newConf >= KNOWN_CONFIDENCE &&
-        newSuccesses >= KNOWN_SUCCESSES
+      const newStreak    = response === 'comfortable' ? entry.streak_count + 1 : 0
+      const movedToKnown = response === 'comfortable' && newStreak >= STREAK_TO_KNOWN
 
       const { error } = await supabase
         .from('word_bank')
         .update({
-          confidence:        newConf,
-          times_reviewed:    entry.times_reviewed + 1,
-          successful_reviews: newSuccesses,
-          status:            movedToKnown ? 'known' : entry.status,
-          last_reviewed_at:  new Date().toISOString(),
+          streak_count:       newStreak,
+          times_reviewed:     entry.times_reviewed + 1,
+          successful_reviews: response === 'comfortable'
+            ? entry.successful_reviews + 1
+            : entry.successful_reviews,
+          status:             movedToKnown ? 'known' : 'learning',
+          last_reviewed_at:   new Date().toISOString(),
         })
         .eq('id', entry.id)
 
       if (error) throw error
-      return { newConfidence: newConf, movedToKnown }
+      return { newStreak, movedToKnown }
     },
     onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: ['word-bank', variables.userId] })
+      qc.invalidateQueries({ queryKey: ['word-bank', variables.userId, variables.entry.language] })
       qc.invalidateQueries({ queryKey: wordBankKeys.stats(variables.userId) })
     },
   })

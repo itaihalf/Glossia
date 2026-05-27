@@ -20,8 +20,33 @@ export function FinishedReadingSheet({
   onReview,
   onSkip,
 }: FinishedReadingSheetProps) {
-  if (!result) return null
+  // Modal is always mounted; open controls visibility.
+  // Content is gated on result so there's never a blank flash.
+  return (
+    <Modal open={open} onClose={onSkip}>
+      {result && (
+        <SheetBody
+          result={result}
+          profile={profile}
+          onReview={onReview}
+          onSkip={onSkip}
+        />
+      )}
+    </Modal>
+  )
+}
 
+function SheetBody({
+  result,
+  profile,
+  onReview,
+  onSkip,
+}: {
+  result: CompletionResult
+  profile: UserProfile
+  onReview: () => void
+  onSkip: () => void
+}) {
   const { streakGained, goalMet, updatedProfile } = result
   const newStreak = updatedProfile.streak_count ?? profile.streak_count
   const period = profile.goal_period
@@ -31,55 +56,53 @@ export function FinishedReadingSheet({
   const goal = profile.goal_stories
 
   return (
-    <Modal open={open} onClose={onSkip}>
-      <div className="text-center pb-2">
-        {/* Hero emoji */}
-        <div className="text-5xl mb-3">🎉</div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Story complete!</h2>
-        <p className="text-sm text-gray-500 mb-6">Great reading session.</p>
+    <div className="text-center pb-2">
+      {/* Hero emoji */}
+      <div className="text-5xl mb-3">🎉</div>
+      <h2 className="text-xl font-bold text-gray-900 mb-1">Story complete!</h2>
+      <p className="text-sm text-gray-500 mb-6">Great reading session.</p>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatCard
-            icon={<Flame className="w-5 h-5 text-orange-400" />}
-            value={newStreak}
-            label={`day${newStreak !== 1 ? 's' : ''} streak`}
-            highlight={streakGained}
-          />
-          <StatCard
-            icon={<BookOpen className="w-5 h-5 text-brand-500" />}
-            value={`${progress}/${goal}`}
-            label={`this ${period}`}
-            highlight={goalMet}
-          />
-          <StatCard
-            icon={<Star className="w-5 h-5 text-amber-400" />}
-            value={goalMet ? '🏆' : '📖'}
-            label={goalMet ? 'Goal met!' : 'Keep going'}
-            highlight={goalMet}
-          />
-        </div>
-
-        {/* Review prompt */}
-        <div className="bg-brand-50 rounded-2xl p-4 mb-5 text-left">
-          <p className="font-semibold text-brand-900 text-sm mb-1">
-            Quick vocabulary review?
-          </p>
-          <p className="text-xs text-brand-700">
-            Review the words from your bank that appeared in this story.
-          </p>
-        </div>
-
-        <div className="space-y-2.5">
-          <Button fullWidth size="lg" onClick={onReview}>
-            Start Review
-          </Button>
-          <Button fullWidth variant="ghost" size="md" onClick={onSkip}>
-            Skip for now
-          </Button>
-        </div>
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <StatCard
+          icon={<Flame className="w-5 h-5 text-orange-400" />}
+          value={newStreak}
+          label={`day${newStreak !== 1 ? 's' : ''} streak`}
+          highlight={streakGained}
+        />
+        <StatCard
+          icon={<BookOpen className="w-5 h-5 text-brand-500" />}
+          value={`${progress}/${goal}`}
+          label={`this ${period}`}
+          highlight={goalMet}
+        />
+        <StatCard
+          icon={<Star className="w-5 h-5 text-amber-400" />}
+          value={goalMet ? '🏆' : '📖'}
+          label={goalMet ? 'Goal met!' : 'Keep going'}
+          highlight={goalMet}
+        />
       </div>
-    </Modal>
+
+      {/* Review prompt */}
+      <div className="bg-brand-50 rounded-2xl p-4 mb-5 text-left">
+        <p className="font-semibold text-brand-900 text-sm mb-1">
+          Quick vocabulary review?
+        </p>
+        <p className="text-xs text-brand-700">
+          Review the words from your bank that appeared in this story.
+        </p>
+      </div>
+
+      <div className="space-y-2.5">
+        <Button fullWidth size="lg" onClick={onReview}>
+          Start Review
+        </Button>
+        <Button fullWidth variant="ghost" size="md" onClick={onSkip}>
+          Skip for now
+        </Button>
+      </div>
+    </div>
   )
 }
 

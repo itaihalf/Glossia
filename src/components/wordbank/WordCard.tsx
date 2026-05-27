@@ -4,27 +4,6 @@ import { cn } from '@/lib/utils'
 import { formatTimeAgo } from '@/lib/utils'
 import type { WordBankEntry, WordStatus } from '@/lib/types'
 
-// ─── Confidence dots ──────────────────────────────────────────────────────────
-
-function ConfidenceDots({ confidence, status }: { confidence: number; status: WordStatus }) {
-  const filled = status === 'known' ? 5 : Math.floor(confidence / 20)
-  return (
-    <div className="flex gap-1" title={`${confidence}/100 confidence`}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className={cn(
-            'w-1.5 h-1.5 rounded-full transition-colors',
-            i < filled
-              ? status === 'known' ? 'bg-emerald-500' : 'bg-brand-500'
-              : 'bg-gray-200',
-          )}
-        />
-      ))}
-    </div>
-  )
-}
-
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 interface WordCardProps {
@@ -58,9 +37,8 @@ export function WordCard({ entry, onStatusChange, onDelete, mutating = false }: 
             <span className="text-gray-500 text-sm truncate">{entry.translation}</span>
           </div>
           <div className="flex items-center gap-3 mt-1.5">
-            <ConfidenceDots confidence={entry.confidence} status={entry.status} />
-            <span className="text-xs text-gray-400">
-              {entry.times_reviewed} {entry.times_reviewed === 1 ? 'review' : 'reviews'}
+            <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
+              🔥 {entry.streak_count} / 5
             </span>
             {entry.last_reviewed_at && (
               <span className="text-xs text-gray-300">{formatTimeAgo(entry.last_reviewed_at)}</span>

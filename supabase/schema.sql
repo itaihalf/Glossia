@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS word_bank (
   confidence       INTEGER NOT NULL DEFAULT 0 CHECK (confidence BETWEEN 0 AND 100),
   times_reviewed   INTEGER NOT NULL DEFAULT 0,
   successful_reviews INTEGER NOT NULL DEFAULT 0,
+  streak_count       INTEGER NOT NULL DEFAULT 0,
   encountered_forms  TEXT[] NOT NULL DEFAULT '{}',
   last_reviewed_at   TIMESTAMPTZ,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),

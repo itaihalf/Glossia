@@ -18,7 +18,7 @@ interface CardResult {
   translation: string
   response: 'comfortable' | 'practice'
   movedToKnown: boolean
-  newConfidence: number
+  newStreak: number
 }
 
 // ─── Phase ────────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ export default function ReviewPage() {
     const entry = cards[cardIndex]
     if (!entry || !profile) return
 
-    let reviewResult: ReviewWordResult = { newConfidence: entry.confidence, movedToKnown: false }
+    let reviewResult: ReviewWordResult = { newStreak: entry.streak_count, movedToKnown: false }
 
     try {
       reviewResult = await reviewWord({ entry, response, userId: profile.id })
@@ -91,11 +91,11 @@ export default function ReviewPage() {
     }
 
     const result: CardResult = {
-      word:          entry.word,
-      translation:   entry.translation,
+      word:         entry.word,
+      translation:  entry.translation,
       response,
-      movedToKnown:  reviewResult.movedToKnown,
-      newConfidence: reviewResult.newConfidence,
+      movedToKnown: reviewResult.movedToKnown,
+      newStreak:    reviewResult.newStreak,
     }
 
     const updatedResults = [...results, result]

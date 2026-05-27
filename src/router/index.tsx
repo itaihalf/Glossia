@@ -24,9 +24,12 @@ import TeacherProfilePage from '@/pages/teacher/TeacherProfilePage'
 
 function RedirectIfAuth() {
   const { user, profile, loading, profileLoading } = useAuth()
+  console.log('[Guard:RedirectIfAuth]', { loading, profileLoading, user: !!user, profile: !!profile, onboarding_complete: profile?.onboarding_complete })
   if (loading) return <LoadingScreen />
   if (!user) return <Outlet />
-  if (profileLoading) return <LoadingScreen />
+  // Only block on profileLoading if we have no profile yet — background refreshes
+  // should not show a spinner when a profile object is already in memory.
+  if (profileLoading && !profile) return <LoadingScreen />
   if (!profile || !profile.onboarding_complete) return <Navigate to="/onboarding" replace />
   const dest = profile.account_type === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'
   return <Navigate to={dest} replace />
@@ -34,6 +37,7 @@ function RedirectIfAuth() {
 
 function RequireAuth() {
   const { user, loading } = useAuth()
+  console.log('[Guard:RequireAuth]', { loading, user: !!user })
   if (loading) return <LoadingScreen />
   if (!user) return <Navigate to="/login" replace />
   return <Outlet />
@@ -41,14 +45,16 @@ function RequireAuth() {
 
 function RequireOnboardingComplete() {
   const { profile, loading, profileLoading } = useAuth()
-  if (loading || profileLoading) return <LoadingScreen />
+  console.log('[Guard:RequireOnboardingComplete]', { loading, profileLoading, profile: !!profile, onboarding_complete: profile?.onboarding_complete })
+  if (loading || (profileLoading && !profile)) return <LoadingScreen />
   if (!profile || !profile.onboarding_complete) return <Navigate to="/onboarding" replace />
   return <Outlet />
 }
 
 function StudentRoutes() {
   const { profile, loading, profileLoading } = useAuth()
-  if (loading || profileLoading) return <LoadingScreen />
+  console.log('[Guard:StudentRoutes]', { loading, profileLoading, profile: !!profile, account_type: profile?.account_type })
+  if (loading || (profileLoading && !profile)) return <LoadingScreen />
   if (!profile) return <Navigate to="/login" replace />
   if (profile.account_type !== 'student') return <Navigate to="/teacher/dashboard" replace />
   return <StudentLayout />
@@ -56,7 +62,8 @@ function StudentRoutes() {
 
 function TeacherRoutes() {
   const { profile, loading, profileLoading } = useAuth()
-  if (loading || profileLoading) return <LoadingScreen />
+  console.log('[Guard:TeacherRoutes]', { loading, profileLoading, profile: !!profile, account_type: profile?.account_type })
+  if (loading || (profileLoading && !profile)) return <LoadingScreen />
   if (!profile) return <Navigate to="/login" replace />
   if (profile.account_type !== 'teacher') return <Navigate to="/student/dashboard" replace />
   return <TeacherLayout />
