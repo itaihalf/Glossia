@@ -122,17 +122,28 @@ export default function ProfilePage() {
     setSaveError(null)
 
     try {
+      const updates: Record<string, unknown> = {
+        nickname: form.nickname.trim(),
+        avatar_emoji: form.avatar_emoji,
+        current_learning_language: form.learning_language || null,
+        language_levels: form.language_levels,
+        interests: form.interests,
+        goal_stories: form.goal_stories,
+        goal_period: form.goal_period,
+      }
+
+      // Convert streak when the goal period type changes
+      if (form.goal_period !== profile.goal_period) {
+        if (profile.goal_period === 'week' && form.goal_period === 'day') {
+          updates.streak_count = profile.streak_count * 7
+        } else if (profile.goal_period === 'day' && form.goal_period === 'week') {
+          updates.streak_count = Math.floor(profile.streak_count / 7)
+        }
+      }
+
       const { error } = await supabase
         .from('user_profiles')
-        .update({
-          nickname: form.nickname.trim(),
-          avatar_emoji: form.avatar_emoji,
-          current_learning_language: form.learning_language || null,
-          language_levels: form.language_levels,
-          interests: form.interests,
-          goal_stories: form.goal_stories,
-          goal_period: form.goal_period,
-        })
+        .update(updates)
         .eq('id', profile.id)
 
       if (error) throw error

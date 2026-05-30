@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { getTodayStr, getYesterdayStr, getISOWeek } from '@/lib/utils'
-import type { Class, VocabularyList, VocabWord, Assignment, UserProfile } from '@/lib/types'
+import type { Class, VocabularyList, VocabWord, UserProfile } from '@/lib/types'
 
 // ─── Key helpers ─────────────────────────────────────────────────────────────
 
@@ -10,11 +10,11 @@ export const classKeys = {
   detail:         (cid: string)  => ['class', cid] as const,
   members:        (cid: string)  => ['class-members', cid] as const,
   vocab:          (cid: string)  => ['class-vocab', cid] as const,
+  globalVocab:    (tid: string)  => ['global-vocab', tid] as const,
   classStories:   (cid: string)  => ['class-stories', cid] as const,
-  assignments:    (cid: string)  => ['class-assignments', cid] as const,
+  openStories:    (tid: string)  => ['teacher-open-stories', tid] as const,
   studentClasses: (sid: string)  => ['student-classes', sid] as const,
   pendingInvites: (sid: string)  => ['pending-invites', sid] as const,
-  teacherAll:     (tid: string)  => ['teacher-assignments-all', tid] as const,
   studentAll:     (sid: string)  => ['student-assignments-all', sid] as const,
 }
 
@@ -53,10 +53,6 @@ export interface PendingInvite {
   teacherNickname: string
   teacherAvatar: string
   invitedAt: string
-}
-
-export interface AssignmentWithClass extends Assignment {
-  className?: string
 }
 
 // ─── Teacher: class CRUD ──────────────────────────────────────────────────────
@@ -346,7 +342,7 @@ export function useClassVocabLists(classId: string | undefined) {
 export function useCreateVocabList() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { class_id: string; teacher_user_id: string; title: string; language: string; words: VocabWord[] }) => {
+    mutationFn: async (input: { class_id: string | null; teacher_user_id: string; title: string; language: string; words: VocabWord[] }) => {
       const { data, error } = await supabase
         .from('vocabulary_lists')
         .insert(input)
@@ -355,8 +351,95 @@ export function useCreateVocabList() {
       if (error) throw error
       return data as VocabularyList
     },
+    onSuccess: (_data, vars) => {
+      if (vars.class_id) {
+        qc.invalidateQueries({ queryKey: classKeys.vocab(vars.class_id) })
+      } else {
+        qc.invalidateQueries({ queryKey: classKeys.globalVocab(vars.teacher_user_id) })
+      }
+    },
+  })
+}
+
+export function useGlobalVocabLists(teacherId: string | undefined, language?: string) {
+  return useQuery({
+    queryKey: [...classKeys.globalVocab(teacherId ?? ''), language ?? ''],
+    enabled: !!teacherId,
+    queryFn: async () => {
+      let q = supabase
+        .from('vocabulary_lists')
+        .select('*')
+        .eq('teacher_user_id', teacherId!)
+        .is('class_id', null)
+        .order('created_at', { ascending: false })
+      if (language) q = q.eq('language', language)
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []) as VocabularyList[]
+    },
+  })
+}
+
+export function useDeleteVocabList() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ listId }: { listId: string; classId?: string | null; teacherId: string }) => {
+      const { error } = await supabase.from('vocabulary_lists').delete().eq('id', listId)
+      if (error) throw error
+    },
+    onSuccess: (_data, vars) => {
+      if (vars.classId) {
+        qc.invalidateQueries({ queryKey: classKeys.vocab(vars.classId) })
+      } else {
+        qc.invalidateQueries({ queryKey: classKeys.globalVocab(vars.teacherId) })
+      }
+    },
+  })
+}
+
+export function useUpdateVocabList() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ listId, title, words }: { listId: string; title: string; words: VocabWord[]; classId?: string | null; teacherId: string }) => {
+      const { data, error } = await supabase
+        .from('vocabulary_lists')
+        .update({ title, words })
+        .eq('id', listId)
+        .select()
+        .single()
+      if (error) throw error
+      return data as VocabularyList
+    },
+    onSuccess: (_data, vars) => {
+      if (vars.classId) {
+        qc.invalidateQueries({ queryKey: classKeys.vocab(vars.classId) })
+      } else {
+        qc.invalidateQueries({ queryKey: classKeys.globalVocab(vars.teacherId) })
+      }
+    },
+  })
+}
+
+export function useImportGlobalVocabToClass() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ list, classId }: { list: VocabularyList; classId: string }) => {
+      const { data, error } = await supabase
+        .from('vocabulary_lists')
+        .insert({
+          class_id:        classId,
+          teacher_user_id: list.teacher_user_id,
+          title:           list.title,
+          language:        list.language,
+          words:           list.words,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      return data as VocabularyList
+    },
     onSuccess: (_data, vars) =>
-      qc.invalidateQueries({ queryKey: classKeys.vocab(vars.class_id) }),
+      qc.invalidateQueries({ queryKey: classKeys.vocab(vars.classId) }),
   })
 }
 
@@ -419,7 +502,8 @@ export function useCreateClassStory() {
       user_id: string; class_id: string; teacher_user_id: string;
       title: string; content: string; translation: string;
       language: string; level: string; length: string;
-      interests_used: string[]; words_used_from_bank: string[]
+      interests_used: string[]; words_used_from_bank: string[];
+      due_date?: string | null; is_open?: boolean;
     }) => {
       const { data, error } = await supabase
         .from('stories')
@@ -435,53 +519,66 @@ export function useCreateClassStory() {
   })
 }
 
-// ─── Assignments ──────────────────────────────────────────────────────────────
+// ─── Story assignments (teacher view) ────────────────────────────────────────
 
-export function useClassAssignments(classId: string | undefined) {
-  return useQuery({
-    queryKey: classKeys.assignments(classId ?? ''),
-    enabled: !!classId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('assignments')
-        .select('*')
-        .eq('class_id', classId!)
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return (data ?? []) as Assignment[]
-    },
-  })
+export interface TeacherStoryAssignment {
+  id: string
+  title: string
+  language: string
+  level: string
+  due_date: string | null
+  is_open: boolean
+  created_at: string
+  class_id: string
+  className?: string
 }
 
-export function useTeacherAssignments(teacherId: string | undefined) {
+export function useTeacherOpenStories(teacherId: string | undefined) {
   return useQuery({
-    queryKey: classKeys.teacherAll(teacherId ?? ''),
+    queryKey: classKeys.openStories(teacherId ?? ''),
     enabled: !!teacherId,
     queryFn: async () => {
-      // Get all teacher's classes
       const { data: classes } = await supabase
         .from('classes')
         .select('id, name')
         .eq('teacher_user_id', teacherId!)
 
       const cids = (classes ?? []).map(c => c.id as string)
-      if (cids.length === 0) return [] as AssignmentWithClass[]
+      if (cids.length === 0) return [] as TeacherStoryAssignment[]
 
-      const { data: assignments, error } = await supabase
-        .from('assignments')
-        .select('*')
+      const { data: stories, error } = await supabase
+        .from('stories')
+        .select('id, title, language, level, due_date, is_open, created_at, class_id')
         .in('class_id', cids)
-        .order('created_at', { ascending: false })
+        .eq('is_open', true)
+        .order('due_date', { ascending: true, nullsFirst: false })
       if (error) throw error
 
       const cmap = new Map((classes ?? []).map(c => [c.id as string, c.name as string]))
-      return (assignments ?? []).map(a => ({
-        ...a,
-        className: cmap.get(a.class_id as string),
-      })) as AssignmentWithClass[]
+      return (stories ?? []).map(s => ({
+        ...s,
+        className: cmap.get(s.class_id as string),
+      })) as TeacherStoryAssignment[]
     },
   })
 }
+
+export function useCloseStory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ storyId }: { storyId: string; teacherId: string }) => {
+      const { error } = await supabase
+        .from('stories')
+        .update({ is_open: false })
+        .eq('id', storyId)
+      if (error) throw error
+    },
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: classKeys.openStories(vars.teacherId) }),
+  })
+}
+
+// ─── Student assignments (legacy assignments table — student UI unchanged) ────
 
 export function useStudentAssignments(studentId: string | undefined, classIds: string[]) {
   return useQuery({
@@ -511,25 +608,6 @@ export function useStudentAssignments(studentId: string | undefined, classIds: s
         ...a,
         studentCompleted: cmap.get(a.id as string) ?? false,
       }))
-    },
-  })
-}
-
-export function useCreateAssignment() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: { class_id: string; teacher_user_id: string; type: string; target_id: string | null; title: string; due_date: string | null }) => {
-      const { data, error } = await supabase
-        .from('assignments')
-        .insert(input)
-        .select()
-        .single()
-      if (error) throw error
-      return data as Assignment
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: classKeys.assignments(vars.class_id) })
-      qc.invalidateQueries({ queryKey: classKeys.teacherAll(vars.teacher_user_id) })
     },
   })
 }

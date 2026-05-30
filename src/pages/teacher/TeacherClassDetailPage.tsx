@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserPlus, Plus, BookOpen, Trash2, CheckCircle } from 'lucide-react'
+import { ArrowLeft, UserPlus, Plus, Download, BookOpen, Clock, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   useClassDetail, useClassMembers, useRemoveMember,
-  useClassVocabLists, useClassStories, useClassAssignments,
+  useClassVocabLists, useDeleteVocabList, useClassStories,
 } from '@/hooks/useClasses'
 import { InviteStudentSheet } from '@/components/classes/InviteStudentSheet'
 import { CreateVocabListSheet } from '@/components/classes/CreateVocabListSheet'
+import { ImportGlobalVocabSheet } from '@/components/classes/ImportGlobalVocabSheet'
 import { TeacherStorySheet } from '@/components/classes/TeacherStorySheet'
-import { CreateAssignmentSheet } from '@/components/classes/CreateAssignmentSheet'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import { getLanguageFlag, getLanguageName, getLevelLabel, formatDate } from '@/lib/utils'
 import type { MemberWithProfile } from '@/hooks/useClasses'
 
-type Tab = 'members' | 'vocabulary' | 'stories' | 'assignments'
+type Tab = 'members' | 'vocabulary' | 'stories'
 
 export default function TeacherClassDetailPage() {
   const { classId }  = useParams<{ classId: string }>()
@@ -27,25 +27,24 @@ export default function TeacherClassDetailPage() {
   const [tab, setTab]               = useState<Tab>('members')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [vocabOpen, setVocabOpen]   = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [storyOpen, setStoryOpen]   = useState(false)
-  const [assignOpen, setAssignOpen] = useState(false)
 
-  const { data: cls, isLoading: clsLoading }     = useClassDetail(classId)
-  const { data: members, isLoading: membLoading } = useClassMembers(classId)
+  const { data: cls, isLoading: clsLoading }          = useClassDetail(classId)
+  const { data: members, isLoading: membLoading }      = useClassMembers(classId)
   const { data: vocabLists = [], isLoading: vLoading } = useClassVocabLists(classId)
-  const { data: stories = [],    isLoading: sLoading }  = useClassStories(classId)
-  const { data: assignments = [], isLoading: aLoading } = useClassAssignments(classId)
-  const { mutateAsync: removeMember, isPending: removing } = useRemoveMember()
+  const { data: stories = [],    isLoading: sLoading } = useClassStories(classId)
+  const { mutateAsync: removeMember, isPending: removing }        = useRemoveMember()
+  const { mutateAsync: deleteVocabList, isPending: deletingVocab } = useDeleteVocabList()
 
   if (!profile) return null
   if (clsLoading) return <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>
   if (!cls) return <p className="text-center text-gray-500 pt-20">Class not found.</p>
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'members',     label: 'Members' },
-    { id: 'vocabulary',  label: 'Vocabulary' },
-    { id: 'stories',     label: 'Stories' },
-    { id: 'assignments', label: 'Assignments' },
+    { id: 'members',    label: 'Members'    },
+    { id: 'vocabulary', label: 'Vocabulary' },
+    { id: 'stories',    label: 'Stories'    },
   ]
 
   return (
@@ -131,14 +130,28 @@ export default function TeacherClassDetailPage() {
         {/* ── Vocabulary ───────────────────────────────────────────────────── */}
         {tab === 'vocabulary' && (
           <>
-            <Button size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => setVocabOpen(true)}>
-              Create Vocab List
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => setVocabOpen(true)}>
+                Create List
+              </Button>
+              <Button size="sm" variant="secondary" leftIcon={<Download className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
+                Import from Global
+              </Button>
+            </div>
             {vLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
             {!vLoading && vocabLists.length === 0 && <EmptySection emoji="📚" text="No vocabulary lists yet." />}
             {!vLoading && vocabLists.map(vl => (
               <div key={vl.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                <p className="font-semibold text-gray-900 mb-2">{vl.title}</p>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="font-semibold text-gray-900">{vl.title}</p>
+                  <button
+                    onClick={() => deleteVocabList({ listId: vl.id, classId: cls.id, teacherId: profile.id })}
+                    disabled={deletingVocab}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 disabled:opacity-40"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(vl.words as Array<{ word: string; translation: string }>).map((w, i) => (
                     <span key={i} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
@@ -160,36 +173,22 @@ export default function TeacherClassDetailPage() {
             </Button>
             {sLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
             {!sLoading && stories.length === 0 && <EmptySection emoji="📖" text="No class stories yet." />}
-            {!sLoading && stories.map((s: { id: string; title: string; level: string; created_at: string }) => (
+            {!sLoading && stories.map((s: { id: string; title: string; level: string; due_date?: string | null; is_open?: boolean; created_at: string }) => (
               <div key={s.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
                 <BookOpen className="w-5 h-5 text-brand-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-gray-900 truncate">{s.title}</p>
                   <p className="text-xs text-gray-400">{getLevelLabel(s.level)} · {formatDate(s.created_at)}</p>
+                  {s.due_date && (
+                    <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                      <Clock className="w-3 h-3" />
+                      Due {formatDate(s.due_date)}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* ── Assignments ───────────────────────────────────────────────────── */}
-        {tab === 'assignments' && (
-          <>
-            <Button size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => setAssignOpen(true)}>
-              Create Assignment
-            </Button>
-            {aLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
-            {!aLoading && assignments.length === 0 && <EmptySection emoji="📋" text="No assignments yet." />}
-            {!aLoading && assignments.map(a => (
-              <div key={a.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-brand-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-gray-900">{a.title}</p>
-                  <div className="flex gap-2 mt-1">
-                    <Badge variant="default">{a.type}</Badge>
-                    {a.due_date && <span className="text-xs text-gray-400">Due {formatDate(a.due_date)}</span>}
-                  </div>
-                </div>
+                {s.is_open === false && (
+                  <Badge variant="default">Closed</Badge>
+                )}
               </div>
             ))}
           </>
@@ -199,8 +198,8 @@ export default function TeacherClassDetailPage() {
       {/* Sheets */}
       <InviteStudentSheet open={inviteOpen} onClose={() => setInviteOpen(false)} classId={cls.id} teacherProfileId={profile.id} />
       <CreateVocabListSheet open={vocabOpen} onClose={() => setVocabOpen(false)} classId={cls.id} teacherId={profile.id} language={cls.language} />
+      <ImportGlobalVocabSheet open={importOpen} onClose={() => setImportOpen(false)} classId={cls.id} teacherId={profile.id} classLanguage={cls.language} />
       <TeacherStorySheet open={storyOpen} onClose={() => setStoryOpen(false)} classId={cls.id} teacherId={profile.id} classLanguage={cls.language} classLevel={cls.level} />
-      <CreateAssignmentSheet open={assignOpen} onClose={() => setAssignOpen(false)} classId={cls.id} teacherId={profile.id} />
     </div>
   )
 }

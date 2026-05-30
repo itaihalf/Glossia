@@ -1,11 +1,12 @@
 import { Outlet } from 'react-router-dom'
-import { Home, GraduationCap, ClipboardList, User } from 'lucide-react'
+import { Home, GraduationCap, BookMarked, ClipboardList, User } from 'lucide-react'
 import { BottomNav } from './BottomNav'
 import type { NavItem } from './BottomNav'
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/teacher/dashboard',   icon: Home,          label: 'Home'        },
   { to: '/teacher/classes',     icon: GraduationCap, label: 'Classes'     },
+  { to: '/teacher/word-lists',  icon: BookMarked,    label: 'Word Lists'  },
   { to: '/teacher/assignments', icon: ClipboardList, label: 'Assignments' },
   { to: '/teacher/profile',     icon: User,          label: 'Profile'     },
 ]

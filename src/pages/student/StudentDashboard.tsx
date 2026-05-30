@@ -1,30 +1,35 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Flame, BookOpen, Archive, Users } from 'lucide-react'
+import { Sparkles, Flame, BookOpen, Archive, Users, Clock } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { getLanguageFlag, getLanguageName, getLevelLabel, getTodayStr, getYesterdayStr } from '@/lib/utils'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useStories } from '@/hooks/useStories'
+import { getLanguageFlag, getLanguageName, getLevelLabel, getTodayStr, getYesterdayStr, formatDate, getIsraelWeekNumber, isConsecutiveWeek } from '@/lib/utils'
+import type { Story } from '@/lib/types'
 
 // ─── Word bank counts query ───────────────────────────────────────────────────
 
-function useWordStats(profileId: string | undefined) {
+function useWordStats(profileId: string | undefined, language: string | null | undefined) {
   return useQuery({
-    queryKey: ['word-stats', profileId],
-    enabled: !!profileId,
+    queryKey: ['word-stats', profileId, language],
+    enabled: !!profileId && !!language,
     queryFn: async () => {
       const [a, b] = await Promise.all([
         supabase
           .from('word_bank')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', profileId!)
+          .eq('language', language!)
           .eq('status', 'learning'),
         supabase
           .from('word_bank')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', profileId!)
+          .eq('language', language!)
           .eq('status', 'known'),
       ])
       return { learning: a.count ?? 0, known: b.count ?? 0 }
@@ -37,23 +42,55 @@ function useWordStats(profileId: string | undefined) {
 export default function StudentDashboard() {
   const { profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
-  const { data: wordStats } = useWordStats(profile?.id)
+  const { data: wordStats } = useWordStats(profile?.id, profile?.current_learning_language)
 
-  // Reset streak if the user missed more than one day since last story
+  // Reset streak when the user has broken their reading cadence
   useEffect(() => {
-    if (!profile || profile.streak_count === 0 || !profile.last_story_date) return
-    const today     = getTodayStr()
-    const yesterday = getYesterdayStr()
-    const last      = profile.last_story_date
-    if (last !== today && last !== yesterday) {
-      supabase
-        .from('user_profiles')
-        .update({ streak_count: 0 })
-        .eq('id', profile.id)
-        .then(({ error }) => { if (!error) refreshProfile() })
+    if (!profile || profile.streak_count === 0) return
+
+    if (profile.goal_period === 'day') {
+      // Daily: reset if last story was neither today nor yesterday
+      if (!profile.last_story_date) return
+      const today     = getTodayStr()
+      const yesterday = getYesterdayStr()
+      const last      = profile.last_story_date
+      if (last !== today && last !== yesterday) {
+        supabase
+          .from('user_profiles')
+          .update({ streak_count: 0 })
+          .eq('id', profile.id)
+          .then(({ error }) => { if (!error) refreshProfile() })
+      }
+    } else {
+      // Weekly: reset if the previous week's goal wasn't met, or if >1 week
+      // has passed since any story was read.
+      // When last_story_week < current week, stories_read_this_week still
+      // holds last week's count (it only resets on the next story completion).
+      if (profile.last_story_week === null) return
+      const israelWeek = getIsraelWeekNumber()
+      const isCurrentWeek = profile.last_story_week === israelWeek
+      const wasLastWeek   = isConsecutiveWeek(profile.last_story_week, israelWeek)
+
+      if (!isCurrentWeek && !wasLastWeek) {
+        // 2+ weeks since last story — streak is definitely broken
+        supabase
+          .from('user_profiles')
+          .update({ streak_count: 0 })
+          .eq('id', profile.id)
+          .then(({ error }) => { if (!error) refreshProfile() })
+      } else if (!isCurrentWeek && wasLastWeek) {
+        // It's a new week; stories_read_this_week is last week's count
+        if (profile.stories_read_this_week < profile.goal_stories) {
+          supabase
+            .from('user_profiles')
+            .update({ streak_count: 0 })
+            .eq('id', profile.id)
+            .then(({ error }) => { if (!error) refreshProfile() })
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id, profile?.last_story_date])
+  }, [profile?.id, profile?.goal_period, profile?.last_story_date, profile?.last_story_week])
 
   if (!profile) return null
 
@@ -119,7 +156,7 @@ export default function StudentDashboard() {
             <Flame className="w-5 h-5 text-orange-400" />
             <p className="text-xl font-bold text-gray-900">{profile.streak_count}</p>
             <p className="text-xs text-gray-500">
-              {profile.streak_count === 1 ? 'day streak' : 'day streak'}
+              {goalPeriod === 'week' ? 'week streak' : 'day streak'}
             </p>
           </div>
         </Card>
@@ -182,10 +219,10 @@ export default function StudentDashboard() {
         </div>
       </Card>
 
-      {/* Recent Stories */}
+      {/* Unfinished Stories */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-800">Recent Stories</h2>
+          <h2 className="font-semibold text-gray-800">Unfinished Stories</h2>
           <button
             onClick={() => navigate('/student/stories')}
             className="text-sm text-brand-600 font-medium"
@@ -193,7 +230,7 @@ export default function StudentDashboard() {
             See all
           </button>
         </div>
-        <RecentStoriesEmpty />
+        <UnfinishedStories profileId={profile.id} language={lang} />
       </div>
 
       {/* Classes shortcut */}
@@ -215,16 +252,58 @@ export default function StudentDashboard() {
   )
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
+// ─── Unfinished stories ───────────────────────────────────────────────────────
 
-function RecentStoriesEmpty() {
+function UnfinishedStories({ profileId, language }: { profileId: string; language: string | null }) {
+  const navigate = useNavigate()
+  const { data: stories = [], isLoading } = useStories(profileId, language ?? '')
+  const unfinished = stories.filter((s: Story) => !s.completed).slice(0, 3)
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-6">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (unfinished.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-dashed border-gray-200 px-6 py-8 text-center">
+        <p className="text-3xl mb-2">📖</p>
+        <p className="font-semibold text-gray-700 mb-1">No unfinished stories</p>
+        <p className="text-sm text-gray-400">
+          Tap &ldquo;Create a Story&rdquo; above to start a new one.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-dashed border-gray-200 px-6 py-8 text-center">
-      <p className="text-3xl mb-2">📖</p>
-      <p className="font-semibold text-gray-700 mb-1">No stories yet</p>
-      <p className="text-sm text-gray-400">
-        Tap &ldquo;Create a Story&rdquo; above to generate your first story.
-      </p>
+    <div className="space-y-2.5">
+      {unfinished.map((story: Story) => (
+        <Card
+          key={story.id}
+          interactive
+          padding="md"
+          onClick={() => navigate(`/student/stories/${story.id}`)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
+              <BookOpen className="w-5 h-5 text-brand-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm leading-tight truncate">
+                {story.title}
+              </p>
+              <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                <Clock className="w-3 h-3" />
+                {getLevelLabel(story.level)} · {formatDate(story.created_at)}
+              </div>
+            </div>
+          </div>
+        </Card>
+      ))}
     </div>
   )
 }

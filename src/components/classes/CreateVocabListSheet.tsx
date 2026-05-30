@@ -1,26 +1,46 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { useCreateVocabList } from '@/hooks/useClasses'
+import { useCreateVocabList, useUpdateVocabList } from '@/hooks/useClasses'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { getLanguageName } from '@/lib/utils'
-import type { VocabWord } from '@/lib/types'
+import type { VocabWord, VocabularyList } from '@/lib/types'
 
 interface CreateVocabListSheetProps {
   open: boolean
   onClose: () => void
-  classId: string
+  classId?: string | null
   teacherId: string
   language: string
+  existingList?: VocabularyList
 }
 
-export function CreateVocabListSheet({ open, onClose, classId, teacherId, language }: CreateVocabListSheetProps) {
-  const [title, setTitle]   = useState('')
-  const [words, setWords]   = useState<Array<{ word: string; translation: string }>>([{ word: '', translation: '' }])
-  const [error, setError]   = useState<string | null>(null)
+export function CreateVocabListSheet({ open, onClose, classId = null, teacherId, language, existingList }: CreateVocabListSheetProps) {
+  const isEdit = !!existingList
 
-  const { mutateAsync: create, isPending } = useCreateVocabList()
+  const [title, setTitle] = useState('')
+  const [words, setWords] = useState<Array<{ word: string; translation: string }>>([{ word: '', translation: '' }])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      if (existingList) {
+        setTitle(existingList.title)
+        setWords(
+          (existingList.words as VocabWord[]).map(w => ({ word: w.word, translation: w.translation }))
+        )
+      } else {
+        setTitle('')
+        setWords([{ word: '', translation: '' }])
+      }
+      setError(null)
+    }
+  }, [open, existingList])
+
+  const { mutateAsync: create, isPending: creating } = useCreateVocabList()
+  const { mutateAsync: update, isPending: updating } = useUpdateVocabList()
+  const isPending = creating || updating
 
   const handleClose = () => { setTitle(''); setWords([{ word: '', translation: '' }]); setError(null); onClose() }
 
@@ -38,13 +58,17 @@ export function CreateVocabListSheet({ open, onClose, classId, teacherId, langua
     setError(null)
 
     const vocabWords: VocabWord[] = validWords.map(w => ({
-      word:       w.word.trim(),
-      base_form:  w.word.trim(),
+      word:        w.word.trim(),
+      base_form:   w.word.trim(),
       translation: w.translation.trim(),
     }))
 
     try {
-      await create({ class_id: classId, teacher_user_id: teacherId, title: title.trim(), language, words: vocabWords })
+      if (isEdit && existingList) {
+        await update({ listId: existingList.id, title: title.trim(), words: vocabWords, classId, teacherId })
+      } else {
+        await create({ class_id: classId, teacher_user_id: teacherId, title: title.trim(), language, words: vocabWords })
+      }
       handleClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save vocab list.')
@@ -52,7 +76,7 @@ export function CreateVocabListSheet({ open, onClose, classId, teacherId, langua
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Create Vocabulary List">
+    <Modal open={open} onClose={handleClose} title={isEdit ? 'Edit Vocabulary List' : 'Create Vocabulary List'}>
       <div className="space-y-4">
         <p className="text-sm text-gray-500">{getLanguageName(language)}</p>
 
@@ -86,7 +110,7 @@ export function CreateVocabListSheet({ open, onClose, classId, teacherId, langua
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <Button fullWidth size="lg" onClick={handleSave} loading={isPending}>
-          Save List
+          {isEdit ? 'Update List' : 'Save List'}
         </Button>
       </div>
     </Modal>

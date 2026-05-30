@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { getTodayStr, getYesterdayStr, getISOWeek } from '@/lib/utils'
+import { getTodayStr, getYesterdayStr, getISOWeek, getIsraelWeekNumber, isConsecutiveWeek } from '@/lib/utils'
 import type { Story, UserProfile } from '@/lib/types'
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
@@ -101,46 +101,66 @@ export function useCompleteStory() {
         .eq('id', storyId)
       if (storyErr) throw storyErr
 
-      // 2. Calculate streak
       const today = getTodayStr()
-      const yesterday = getYesterdayStr()
-      const currentWeek = getISOWeek()
-
       const isNewDay = profile.last_story_date !== today
-      const wasYesterday = profile.last_story_date === yesterday
-      const isNewWeek = (profile.last_story_week ?? 0) !== currentWeek
-
-      const newStreak = isNewDay
-        ? (wasYesterday ? profile.streak_count + 1 : 1)
-        : profile.streak_count
-
       const newReadToday = isNewDay ? 1 : profile.stories_read_today + 1
-      const newReadWeek  = isNewWeek ? 1 : profile.stories_read_this_week + 1
 
-      const profileUpdates: Partial<UserProfile> = {
-        last_story_date: today,
-        last_story_week: currentWeek,
-        streak_count: newStreak,
-        stories_read_today: newReadToday,
-        stories_read_this_week: newReadWeek,
+      const profileUpdates: Partial<UserProfile> = { last_story_date: today, stories_read_today: newReadToday }
+      let streakGained = false
+      let goalMet = false
+
+      if (profile.goal_period === 'day') {
+        // ── Daily streak ────────────────────────────────────────────────────────
+        const yesterday   = getYesterdayStr()
+        const currentWeek = getISOWeek()
+        const isNewWeek   = (profile.last_story_week ?? 0) !== currentWeek
+
+        const wasYesterday = profile.last_story_date === yesterday
+        const newStreak    = isNewDay ? (wasYesterday ? profile.streak_count + 1 : 1) : profile.streak_count
+        const newReadWeek  = isNewWeek ? 1 : profile.stories_read_this_week + 1
+
+        streakGained = isNewDay
+        goalMet      = newReadToday >= profile.goal_stories
+
+        Object.assign(profileUpdates, {
+          last_story_week:        currentWeek,
+          streak_count:           newStreak,
+          stories_read_this_week: newReadWeek,
+        })
+
+      } else {
+        // ── Weekly streak (Israel timezone, weeks start Monday midnight IL) ────
+        const israelWeek   = getIsraelWeekNumber()
+        const isNewWeek    = (profile.last_story_week ?? 0) !== israelWeek
+        const prevWeekCount = isNewWeek ? 0 : profile.stories_read_this_week
+        const newReadWeek  = prevWeekCount + 1
+
+        // Streak increments exactly when the goal threshold is crossed this week
+        const justMetGoal = newReadWeek >= profile.goal_stories && prevWeekCount < profile.goal_stories
+        let newStreak = profile.streak_count
+        if (justMetGoal) {
+          const consecutive = isConsecutiveWeek(profile.last_story_week, israelWeek)
+          newStreak    = consecutive ? profile.streak_count + 1 : 1
+          streakGained = true
+        }
+
+        goalMet = newReadWeek >= profile.goal_stories
+
+        Object.assign(profileUpdates, {
+          last_story_week:        israelWeek,
+          streak_count:           newStreak,
+          stories_read_this_week: newReadWeek,
+        })
       }
 
-      // 3. Update profile
+      // 2. Persist profile updates
       const { error: profErr } = await supabase
         .from('user_profiles')
         .update(profileUpdates)
         .eq('id', profile.id)
       if (profErr) throw profErr
 
-      // Whether goal was hit after this read
-      const progress = profile.goal_period === 'day' ? newReadToday : newReadWeek
-      const goalMet  = progress >= profile.goal_stories
-
-      return {
-        updatedProfile: profileUpdates,
-        streakGained: isNewDay,
-        goalMet,
-      }
+      return { updatedProfile: profileUpdates, streakGained, goalMet }
     },
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: ['story', variables.storyId] })

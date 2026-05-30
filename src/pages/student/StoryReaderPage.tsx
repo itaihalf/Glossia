@@ -79,7 +79,7 @@ export default function StoryReaderPage() {
 
   // ── Word click handler ──────────────────────────────────────────────────────
 
-  const handleWordClick = useCallback(async (word: string) => {
+  const handleWordClick = useCallback(async (word: string, contextText: string) => {
     if (!story) return
     setActiveWord(word)
     setAddState('idle')
@@ -102,7 +102,7 @@ export default function StoryReaderPage() {
     setPopupState({ phase: 'loading', word })
 
     try {
-      const result = await normalizeWord(word, story.language)
+      const result = await normalizeWord(word, story.language, contextText)
       wordCache.current.set(word, result)
       setPopupState({
         phase: 'result',
@@ -375,7 +375,7 @@ function StoryContent({
   mode: TranslationMode
   activeWord: string | null
   practiceSet: Set<string>
-  onWordClick: (word: string) => void
+  onWordClick: (word: string, contextText: string) => void
 }) {
   const origParas  = story.content.split('\n\n').filter(p => p.trim())
   const transParas = (story.translation ?? '').split('\n\n').filter(p => p.trim())
@@ -446,7 +446,7 @@ function StoryParagraph({
   text: string
   activeWord: string | null
   practiceSet: Set<string>
-  onWordClick: (word: string) => void
+  onWordClick: (word: string, contextText: string) => void
 }) {
   const chunks = text.split(/(\s+)/u).filter(c => c.length > 0)
 
@@ -464,7 +464,7 @@ function StoryParagraph({
         return (
           <button
             key={i}
-            onClick={() => onWordClick(clean)}
+            onClick={() => onWordClick(clean, text)}
             className={cn(
               'inline transition-colors duration-100 cursor-pointer',
               isActive

@@ -17,6 +17,7 @@ import ProfilePage from '@/pages/student/ProfilePage'
 import TeacherDashboard from '@/pages/teacher/TeacherDashboard'
 import TeacherClassesPage from '@/pages/teacher/TeacherClassesPage'
 import TeacherClassDetailPage from '@/pages/teacher/TeacherClassDetailPage'
+import GlobalWordListsPage from '@/pages/teacher/GlobalWordListsPage'
 import AssignmentsPage from '@/pages/teacher/AssignmentsPage'
 import TeacherProfilePage from '@/pages/teacher/TeacherProfilePage'
 
@@ -112,11 +113,12 @@ export const router = createBrowserRouter([
           {
             element: <TeacherRoutes />,
             children: [
-              { path: '/teacher/dashboard',   element: <TeacherDashboard /> },
+              { path: '/teacher/dashboard',            element: <TeacherDashboard /> },
               { path: '/teacher/classes',              element: <TeacherClassesPage /> },
               { path: '/teacher/classes/:classId',     element: <TeacherClassDetailPage /> },
+              { path: '/teacher/word-lists',           element: <GlobalWordListsPage /> },
               { path: '/teacher/assignments',          element: <AssignmentsPage /> },
-              { path: '/teacher/profile',     element: <TeacherProfilePage /> },
+              { path: '/teacher/profile',              element: <TeacherProfilePage /> },
             ],
           },
         ],
