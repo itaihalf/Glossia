@@ -118,6 +118,7 @@ export const router = createBrowserRouter([
               { path: '/teacher/classes/:classId',     element: <TeacherClassDetailPage /> },
               { path: '/teacher/word-lists',           element: <GlobalWordListsPage /> },
               { path: '/teacher/assignments',          element: <AssignmentsPage /> },
+              { path: '/teacher/stories/:storyId',     element: <StoryReaderPage /> },
               { path: '/teacher/profile',              element: <TeacherProfilePage /> },
             ],
           },

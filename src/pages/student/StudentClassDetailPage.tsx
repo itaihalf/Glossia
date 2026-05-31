@@ -125,17 +125,26 @@ export default function StudentClassDetailPage() {
           {!sLoad && stories.length === 0 && (
             <p className="text-sm text-gray-400">No stories assigned yet.</p>
           )}
-          {!sLoad && stories.map((s: { id: string; title: string; level: string; created_at: string }) => (
-            <button key={s.id}
-              onClick={() => navigate(`/student/stories/${s.id}`)}
-              className="w-full flex items-center gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3 text-left hover:border-brand-200 transition-colors">
-              <BookOpen className="w-5 h-5 text-brand-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-gray-900 truncate">{s.title}</p>
-                <p className="text-xs text-gray-400">{getLevelLabel(s.level)} · {formatDate(s.created_at)}</p>
-              </div>
-            </button>
-          ))}
+          {!sLoad && stories.map((s: { id: string; title: string; level: string; created_at: string; due_date?: string | null }) => {
+            const overdue = s.due_date && new Date(s.due_date) < new Date()
+            return (
+              <button key={s.id}
+                onClick={() => navigate(`/student/stories/${s.id}`)}
+                className="w-full flex items-center gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3 text-left hover:border-brand-200 transition-colors">
+                <BookOpen className="w-5 h-5 text-brand-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-gray-900 truncate">{s.title}</p>
+                  <p className="text-xs text-gray-400">{getLevelLabel(s.level)} · {formatDate(s.created_at)}</p>
+                  {s.due_date && (
+                    <div className={`flex items-center gap-1 mt-0.5 text-xs ${overdue ? 'text-red-500' : 'text-gray-400'}`}>
+                      <Clock className="w-3 h-3" />
+                      Due {formatDate(s.due_date)}
+                    </div>
+                  )}
+                </div>
+              </button>
+            )
+          })}
         </section>
 
         {/* Assignments */}

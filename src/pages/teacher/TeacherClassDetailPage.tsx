@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserPlus, Plus, Download, BookOpen, Clock, Trash2 } from 'lucide-react'
+import { ArrowLeft, UserPlus, Plus, Download, BookOpen, Clock, Trash2, Eye } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   useClassDetail, useClassMembers, useRemoveMember,
@@ -135,7 +135,7 @@ export default function TeacherClassDetailPage() {
                 Create List
               </Button>
               <Button size="sm" variant="secondary" leftIcon={<Download className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
-                Import from Global
+                Import from Word Lists
               </Button>
             </div>
             {vLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
@@ -189,6 +189,13 @@ export default function TeacherClassDetailPage() {
                 {s.is_open === false && (
                   <Badge variant="default">Closed</Badge>
                 )}
+                <button
+                  onClick={() => navigate(`/teacher/stories/${s.id}`)}
+                  title="Read story"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors shrink-0"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </>

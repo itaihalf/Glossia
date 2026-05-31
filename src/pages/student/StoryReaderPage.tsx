@@ -170,6 +170,8 @@ export default function StoryReaderPage() {
 
   // ── Finish reading ──────────────────────────────────────────────────────────
 
+  const isTeacherPreview = profile?.account_type === 'teacher'
+
   // A class story belongs to the teacher, not the student — update stats only
   const isOwnStory = !story?.class_id || story?.user_id === profile?.id
 
@@ -237,7 +239,7 @@ export default function StoryReaderPage() {
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-3">
         <div className="flex items-center gap-3 mb-3">
           <button
-            onClick={() => navigate('/student/stories')}
+            onClick={() => navigate(-1)}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -297,7 +299,17 @@ export default function StoryReaderPage() {
         )}
 
         {/* Finished reading button */}
-        {(!story.completed || !isOwnStory) ? (
+        {isTeacherPreview ? (
+          <Button
+            fullWidth
+            size="lg"
+            variant="secondary"
+            onClick={() => navigate(-1)}
+            leftIcon={<ArrowLeft className="w-5 h-5" />}
+          >
+            Done Previewing
+          </Button>
+        ) : (!story.completed || !isOwnStory) ? (
           <Button
             fullWidth
             size="lg"

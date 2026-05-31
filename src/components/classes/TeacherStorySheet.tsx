@@ -200,18 +200,6 @@ export function TeacherStorySheet({ open, onClose, classId, teacherId, classLang
                   onChange={e => setWordCount(Number(e.target.value))}
                   className="w-full accent-brand-500"
                 />
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                  {(selectedList.words as VocabWord[]).slice(0, wordCount).map((w, i) => (
-                    <span key={i} className="text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-1 rounded-full">
-                      {w.word}
-                    </span>
-                  ))}
-                  {wordCount < maxWords && (
-                    <span className="text-xs text-gray-400 px-2 py-1">
-                      +{maxWords - wordCount} more not shown
-                    </span>
-                  )}
-                </div>
               </div>
             )}
           </div>

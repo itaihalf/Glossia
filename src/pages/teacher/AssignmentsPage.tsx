@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, X } from 'lucide-react'
+import { BookOpen, Clock, X, Eye } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTeacherOpenStories, useCloseStory } from '@/hooks/useClasses'
 import { Card } from '@/components/ui/Card'
@@ -49,6 +49,7 @@ export default function AssignmentsPage() {
               story={s}
               closing={closing}
               onClick={() => navigate(`/teacher/classes/${s.class_id}`)}
+              onRead={() => navigate(`/teacher/stories/${s.id}`)}
               onClose={e => handleClose(s.id, e)}
             />
           ))}
@@ -64,10 +65,11 @@ interface StoryAssignmentCardProps {
   story: TeacherStoryAssignment
   closing: boolean
   onClick: () => void
+  onRead: () => void
   onClose: (e: React.MouseEvent) => void
 }
 
-function StoryAssignmentCard({ story, closing, onClick, onClose }: StoryAssignmentCardProps) {
+function StoryAssignmentCard({ story, closing, onClick, onRead, onClose }: StoryAssignmentCardProps) {
   const overdue = story.due_date && new Date(story.due_date) < new Date()
 
   return (
@@ -99,6 +101,15 @@ function StoryAssignmentCard({ story, closing, onClick, onClose }: StoryAssignme
             </div>
           )}
         </div>
+
+        {/* Read button */}
+        <button
+          onClick={e => { e.stopPropagation(); onRead() }}
+          title="Read story"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors shrink-0"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
 
         {/* Close button */}
         <button
