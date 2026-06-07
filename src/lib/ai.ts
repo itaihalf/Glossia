@@ -1,4 +1,3 @@
-import OpenAI from 'openai'
 import { getLanguageName } from './utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,33 +37,51 @@ export interface GeneratedStory {
 const STORY_MODEL = 'gpt-5-mini'
 const TRANSLATION_MODEL = 'gpt-5-nano'
 
-function getClient(): OpenAI {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY
-  if (!apiKey) throw new Error('OpenAI API key not configured. Add VITE_OPENAI_API_KEY to your .env.local file.')
-  return new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+const AI_ENDPOINT = '/.netlify/functions/generate'
+
+interface AiRequest {
+  prompt: string
+  model: string
+  responseFormat?: 'json_object'
+  temperature?: number
+  reasoningEffort?: 'low' | 'medium' | 'high'
+}
+
+/** Calls our Netlify function, which holds the OpenAI API key server-side. */
+async function callAi(request: AiRequest): Promise<string> {
+  const response = await fetch(AI_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const { error } = await response.json().catch(() => ({ error: undefined }))
+    throw new Error(error || 'AI request failed. Please try again.')
+  }
+
+  const { content } = await response.json() as { content?: string }
+  return content ?? ''
 }
 
 async function generateJson<T>(prompt: string, model = STORY_MODEL): Promise<T> {
-  const client = getClient()
-  const response = await client.chat.completions.create({
+  const text = await callAi({
+    prompt,
     model,
-    response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content: prompt }],
-    ...(model === TRANSLATION_MODEL ? { reasoning_effort: 'low' } : {}),
+    responseFormat: 'json_object',
+    ...(model === TRANSLATION_MODEL ? { reasoningEffort: 'low' } : {}),
   })
-  const text = response.choices[0].message.content ?? ''
   return JSON.parse(text) as T
 }
 
 async function generateText(prompt: string, temperature: number, model = TRANSLATION_MODEL): Promise<string> {
-  const client = getClient()
-  const response = await client.chat.completions.create({
+  const text = await callAi({
+    prompt,
     model,
     temperature,
-    messages: [{ role: 'user', content: prompt }],
-    ...(model === TRANSLATION_MODEL ? { reasoning_effort: 'low' } : {}),
+    ...(model === TRANSLATION_MODEL ? { reasoningEffort: 'low' } : {}),
   })
-  return response.choices[0].message.content?.trim() ?? ''
+  return text.trim()
 }
 
 // ─── Contextual word translation ──────────────────────────────────────────────
