@@ -12,7 +12,7 @@ import { FlashcardSession } from '@/components/review/FlashcardSession'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
-import { getLevelLabel, getLanguageName } from '@/lib/utils'
+import { getLevelLabel, getLanguageName, isRTLLanguage } from '@/lib/utils'
 
 // ─── Translation mode ─────────────────────────────────────────────────────────
 
@@ -383,7 +383,7 @@ function StoryContent({
   practiceSet,
   onWordClick,
 }: {
-  story: { content: string; translation: string | null }
+  story: { content: string; translation: string | null; language: string }
   mode: TranslationMode
   activeWord: string | null
   practiceSet: Set<string>
@@ -391,12 +391,14 @@ function StoryContent({
 }) {
   const origParas  = story.content.split('\n\n').filter(p => p.trim())
   const transParas = (story.translation ?? '').split('\n\n').filter(p => p.trim())
+  const rtl = isRTLLanguage(story.language)
+  const dir = rtl ? 'rtl' : 'ltr'
 
   if (mode === 'translation') {
     return (
-      <div className="space-y-5">
+      <div className="space-y-5" dir={dir}>
         {transParas.map((para, i) => (
-          <p key={i} className="text-gray-700 leading-relaxed text-base">{para}</p>
+          <p key={i} className={cn('text-gray-700 leading-relaxed text-base', rtl && 'text-right')}>{para}</p>
         ))}
       </div>
     )
@@ -404,11 +406,12 @@ function StoryContent({
 
   if (mode === 'original') {
     return (
-      <div className="space-y-5">
+      <div className="space-y-5" dir={dir}>
         {origParas.map((para, i) => (
           <StoryParagraph
             key={i}
             text={para}
+            rtl={rtl}
             activeWord={activeWord}
             practiceSet={practiceSet}
             onWordClick={onWordClick}
@@ -425,12 +428,19 @@ function StoryContent({
         <div key={i} className="space-y-2">
           <StoryParagraph
             text={para}
+            rtl={rtl}
             activeWord={activeWord}
             practiceSet={practiceSet}
             onWordClick={onWordClick}
           />
           {transParas[i] && (
-            <p className="text-sm text-gray-400 italic leading-relaxed pl-3 border-l-2 border-gray-100">
+            <p
+              dir={dir}
+              className={cn(
+                'text-sm text-gray-400 italic leading-relaxed border-gray-100',
+                rtl ? 'text-right pr-3 border-r-2' : 'pl-3 border-l-2',
+              )}
+            >
               {transParas[i]}
             </p>
           )}
@@ -451,11 +461,13 @@ function cleanWord(chunk: string): string {
 
 function StoryParagraph({
   text,
+  rtl,
   activeWord,
   practiceSet,
   onWordClick,
 }: {
   text: string
+  rtl: boolean
   activeWord: string | null
   practiceSet: Set<string>
   onWordClick: (word: string, contextText: string) => void
@@ -463,7 +475,7 @@ function StoryParagraph({
   const chunks = text.split(/(\s+)/u).filter(c => c.length > 0)
 
   return (
-    <p className="leading-relaxed text-gray-800 text-lg font-serif">
+    <p dir={rtl ? 'rtl' : 'ltr'} className={cn('leading-relaxed text-gray-800 text-lg font-serif', rtl && 'text-right')}>
       {chunks.map((chunk, i) => {
         if (/^\s+$/.test(chunk)) return <span key={i}> </span>
 

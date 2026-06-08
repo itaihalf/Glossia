@@ -15,6 +15,12 @@ export function getLanguageName(code: string): string {
   return map[code] ?? code
 }
 
+const RTL_LANGUAGES = new Set(['he', 'ar', 'fa', 'ur'])
+
+export function isRTLLanguage(code: string): boolean {
+  return RTL_LANGUAGES.has(code)
+}
+
 export function getLanguageFlag(code: string): string {
   const map: Record<string, string> = {
     el: '🇬🇷', es: '🇪🇸', fr: '🇫🇷', it: '🇮🇹',
