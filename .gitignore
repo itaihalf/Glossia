@@ -37,3 +37,6 @@ pyvenv.cfg
 general.py
 __pycache__/
 *.py[cod]
+
+# Local Netlify folder
+.netlify

@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Volume2, VolumeX } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useStory, useCompleteStory, type CompletionResult } from '@/hooks/useStories'
 import { useUpdateReadingStats } from '@/hooks/useClasses'
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { getLevelLabel, getLanguageName, isRTLLanguage } from '@/lib/utils'
+import { fetchStoryAudio, stopStoryAudio } from '@/lib/tts'
 
 // ─── Translation mode ─────────────────────────────────────────────────────────
 
@@ -54,6 +55,48 @@ export default function StoryReaderPage() {
     for (const entry of knownWords ?? [])    map.set(entry.base_form.toLowerCase(), { id: entry.id, status: 'known' })
     return map
   }, [learningWords, knownWords])
+
+  // TTS reading state — the component owns the active browser Audio object
+  const [isReading, setIsReading] = useState(false)
+  const [isAudioLoading, setIsAudioLoading] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const stopReading = useCallback(() => {
+    stopStoryAudio(audioRef.current)
+    audioRef.current = null
+    setIsReading(false)
+  }, [])
+
+  const handleReadStory = useCallback(async () => {
+    if (!story || isAudioLoading) return
+
+    // Already playing → stop directly via the stored Audio object
+    if (isReading) {
+      stopReading()
+      return
+    }
+
+    setIsAudioLoading(true)
+    try {
+      const audio = await fetchStoryAudio(story.content, story.language)
+      audioRef.current = audio
+      audio.onended = () => {
+        if (audioRef.current === audio) stopReading()
+      }
+      audio.onerror = () => {
+        if (audioRef.current === audio) stopReading()
+      }
+      setIsReading(true)
+      await audio.play()
+    } catch {
+      stopReading()
+    } finally {
+      setIsAudioLoading(false)
+    }
+  }, [isReading, isAudioLoading, story, stopReading])
+
+  // Stop any in-progress playback when leaving the page
+  useEffect(() => stopReading, [stopReading])
 
   // Translation mode
   const [mode, setMode] = useState<TranslationMode>('original')
@@ -250,6 +293,18 @@ export default function StoryReaderPage() {
               {langName} · {getLevelLabel(story.level)}
             </p>
           </div>
+          <button
+            onClick={handleReadStory}
+            disabled={isAudioLoading}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-wait"
+            title={isAudioLoading ? 'Loading audio…' : isReading ? 'Stop reading' : 'Read story aloud'}
+          >
+            {isAudioLoading
+              ? <LoadingSpinner size="sm" />
+              : isReading
+                ? <VolumeX className="w-5 h-5 text-brand-600" />
+                : <Volume2 className="w-5 h-5 text-gray-500" />}
+          </button>
           {story.completed && (
             <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
           )}
@@ -344,6 +399,7 @@ export default function StoryReaderPage() {
         existingStatus={existingWordEntry?.status ?? null}
         transferState={transferState}
         onTransferToLearning={handleTransferToLearning}
+        lang={story.language}
       />
 
       {/* ── Finished sheet ──────────────────────────────────────────────────── */}

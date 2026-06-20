@@ -1,8 +1,9 @@
 import { useEffect, type ReactNode } from 'react'
-import { X, BookPlus, Check, AlertCircle, RotateCcw } from 'lucide-react'
+import { X, BookPlus, Check, AlertCircle, RotateCcw, Volume2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { pronounceWord } from '@/lib/tts'
 
 // ─── Types passed in ─────────────────────────────────────────────────────────
 
@@ -23,11 +24,12 @@ interface WordPopupSheetProps {
   existingStatus: 'learning' | 'known' | null
   transferState: TransferState
   onTransferToLearning: () => void
+  lang?: string
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function WordPopupSheet({ state, addState, onClose, onAddToWordBank, existingStatus, transferState, onTransferToLearning }: WordPopupSheetProps) {
+export function WordPopupSheet({ state, addState, onClose, onAddToWordBank, existingStatus, transferState, onTransferToLearning, lang }: WordPopupSheetProps) {
   const open = state.phase !== 'closed'
 
   // Lock scroll when open
@@ -73,7 +75,18 @@ export function WordPopupSheet({ state, addState, onClose, onAddToWordBank, exis
           <div className="space-y-3">
             <div>
               <div className="flex items-baseline gap-3 flex-wrap">
-                <span className="text-2xl font-bold text-gray-900">{state.baseForm}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-2xl font-bold text-gray-900">{state.baseForm}</span>
+                  {lang && (
+                    <button
+                      onClick={() => pronounceWord(state.baseForm, lang).catch(() => {})}
+                      className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Pronounce"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
                 {state.pos && (
                   <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                     {state.pos}
