@@ -631,7 +631,7 @@ export function useMarkAssignmentComplete() {
 
 export function useUpdateReadingStats() {
   return useMutation({
-    mutationFn: async ({ profile }: { profile: UserProfile }) => {
+    mutationFn: async ({ profile, language }: { profile: UserProfile; language: string }) => {
       const today = getTodayStr()
       const yesterday = getYesterdayStr()
       const currentWeek = getISOWeek()
@@ -647,11 +647,21 @@ export function useUpdateReadingStats() {
       const newReadToday = isNewDay ? 1 : profile.stories_read_today + 1
       const newReadWeek  = isNewWeek ? 1 : profile.stories_read_this_week + 1
 
+      // Mirror the DB trigger's per-language bump for class reads (see below).
+      const byLanguage = { ...(profile.stories_completed_by_language ?? {}) }
+      byLanguage[language] = (byLanguage[language] ?? 0) + 1
+
       const profileUpdates: Partial<UserProfile> = {
         last_story_date: today, last_story_week: currentWeek,
         streak_count: newStreak,
         stories_read_today: newReadToday,
         stories_read_this_week: newReadWeek,
+        // Class stories never flip the student's own `completed` flag, so the
+        // DB trigger that maintains the lifetime counters doesn't fire here —
+        // bump both the all-time total and the per-language breakdown explicitly
+        // to count class reads toward them.
+        stories_completed_total: profile.stories_completed_total + 1,
+        stories_completed_by_language: byLanguage,
       }
 
       const { error } = await supabase

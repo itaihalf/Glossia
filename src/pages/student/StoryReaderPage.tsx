@@ -227,7 +227,7 @@ export default function StoryReaderPage() {
       if (isOwnStory) {
         result = await completeStory({ storyId: story.id, profile })
       } else {
-        result = await updateReadingStats({ profile })
+        result = await updateReadingStats({ profile, language: story.language })
       }
       console.log("Complete Story Result:", result)
       setCompletionResult(result)

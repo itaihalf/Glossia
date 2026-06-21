@@ -1,12 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Flame, BookOpen, Archive, Users, Clock } from 'lucide-react'
+import { Sparkles, Flame, BookOpen, Archive, Users, Clock, Trophy } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { StoriesCompletedModal } from '@/components/student/StoriesCompletedModal'
 import { useStories } from '@/hooks/useStories'
 import { getLanguageFlag, getLanguageName, getLevelLabel, getTodayStr, getYesterdayStr, formatDate, getIsraelWeekNumber, isConsecutiveWeek } from '@/lib/utils'
 import type { Story } from '@/lib/types'
@@ -43,6 +44,7 @@ export default function StudentDashboard() {
   const { profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
   const { data: wordStats } = useWordStats(profile?.id, profile?.current_learning_language)
+  const [completedModalOpen, setCompletedModalOpen] = useState(false)
 
   // Reset streak when the user has broken their reading cadence
   useEffect(() => {
@@ -181,6 +183,29 @@ export default function StudentDashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Lifetime stories completed */}
+      <Card interactive onClick={() => setCompletedModalOpen(true)}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Trophy className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 text-sm">Stories Completed</p>
+              <p className="text-xs text-gray-400">Tap for language breakdown</p>
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{profile.stories_completed_total}</p>
+        </div>
+      </Card>
+
+      <StoriesCompletedModal
+        open={completedModalOpen}
+        onClose={() => setCompletedModalOpen(false)}
+        byLanguage={profile.stories_completed_by_language ?? {}}
+        total={profile.stories_completed_total}
+      />
 
       {/* Goal progress */}
       <Card>

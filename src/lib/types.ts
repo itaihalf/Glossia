@@ -26,6 +26,8 @@ export interface UserProfile {
   streak_count: number
   stories_read_today: number
   stories_read_this_week: number
+  stories_completed_total: number
+  stories_completed_by_language: Record<string, number>
   last_story_date: string | null
   last_story_week: number | null
   teaching_languages: string[]

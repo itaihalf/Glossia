@@ -94,7 +94,10 @@ export function useCompleteStory() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ storyId, profile }: CompleteStoryInput): Promise<CompletionResult> => {
-      // 1. Mark story completed
+      // 1. Mark story completed. A DB trigger
+      // (increment_stories_completed_total) bumps the owner's lifetime
+      // stories_completed_total on this transition — do NOT also increment it
+      // in the profile update below, or completions would be double-counted.
       const { error: storyErr } = await supabase
         .from('stories')
         .update({ completed: true, completed_at: new Date().toISOString() })
