@@ -52,7 +52,8 @@ export function CreateStorySheet({ open, onClose, profile }: CreateStorySheetPro
     setPhase({ t: 'generating' })
 
     try {
-      // Fetch up to 10 learning words with lowest confidence (most need practice)
+      // Fetch the lowest-confidence learning words (those that most need practice).
+      // generateStory shuffles and picks a length-scaled subset from this pool.
       const { data: words } = await supabase
         .from('word_bank')
         .select('id, word, translation')
@@ -60,18 +61,15 @@ export function CreateStorySheet({ open, onClose, profile }: CreateStorySheetPro
         .eq('language', lang)
         .eq('status', 'learning')
         .order('confidence', { ascending: true })
-        .limit(10)
+        .limit(25)
 
       const wordBankWords = (words ?? []) as Array<{ id: string; word: string; translation: string }>
 
-      // Pick 1–2 random interests from the user's list
-      const interests = [...profile.interests].sort(() => Math.random() - 0.5).slice(0, 2)
-
-      // Generate story
+      // Pass the full interest list — generateStory owns the randomization.
       const generated = await generateStory({
         languageCode: lang,
         level,
-        interests,
+        interests: profile.interests,
         wordBankWords,
         length,
         topicHint: topicHint.trim() || undefined,
@@ -86,8 +84,8 @@ export function CreateStorySheet({ open, onClose, profile }: CreateStorySheetPro
         language: lang,
         level,
         length,
-        interests_used: interests,
-        words_used_from_bank: wordBankWords.map(w => w.id),
+        interests_used: generated.interestUsed ? [generated.interestUsed] : [],
+        words_used_from_bank: generated.usedWordIds,
       })
 
       handleClose()
