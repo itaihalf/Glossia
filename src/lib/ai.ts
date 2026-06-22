@@ -171,11 +171,18 @@ export async function generateStory(params: GenerateStoryParams): Promise<Genera
   }
 
   const levelDescriptions: Record<string, string> = {
-    complete_beginner: 'A1 — only present tense, extremely simple sentences, very common words only',
-    beginner:          'A2 — present and simple past, basic connectives, short sentences',
+    complete_beginner: 'A1 — present tense only, simple but natural-sounding sentences using basic conjunctions (and, but, so), very common words',
+    beginner:          'A2 — present and simple past, natural narrative flow using basic connectives, short but cohesive sentences',
     novice:            'B1 — main tenses, moderate vocabulary, compound sentences',
     intermediate:      'B2 — all major tenses, varied vocabulary, complex sentences',
     advanced:          'C1/C2 — advanced grammar, rich vocabulary, nuanced expression',
+  }
+
+  const paragraphCounts: Record<typeof params.length, string> = {
+    very_short: '2–3',
+    short:      '3–4',
+    medium:     '4–5',
+    long:       '5–6',
   }
 
   // Scale the word bank down to a random subset sized for the story length.
@@ -213,7 +220,7 @@ Target length: ${wordCounts[params.length]} words in ${languageName}${themeSecti
 Instructions:
 1. Write the story entirely in ${languageName}.
 2. Use vocabulary and grammar suitable for the given level.
-3. Divide into 3–5 natural paragraphs separated by blank lines.
+3. Divide into ${paragraphCounts[params.length]} natural paragraphs separated by blank lines.
 4. Provide a paragraph-by-paragraph English translation with EXACTLY the same number of paragraphs.
 5. Title should be in ${languageName}.
 6. Do NOT mix languages within content or translation sections.
