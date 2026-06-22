@@ -25,6 +25,7 @@
         "npm:eslint@^9.9.0",
         "npm:framer-motion@^12.40.0",
         "npm:globals@^15.9.0",
+        "npm:google-tts-api@^2.0.2",
         "npm:lucide-react@0.323",
         "npm:openai@4",
         "npm:postcss@^8.4.35",

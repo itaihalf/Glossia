@@ -146,4 +146,6 @@ export interface PublicProfile {
   account_type: AccountType
   current_learning_language: string | null
   teaching_languages: string[]
+  streak_count: number
+  stories_completed_total: number
 }

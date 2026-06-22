@@ -1,4 +1,4 @@
-import { UserPlus, UserCheck, Loader2 } from 'lucide-react'
+import { UserPlus, UserCheck, Loader2, Flame, BookOpen } from 'lucide-react'
 import { getLanguageFlag, getLanguageName } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { PublicProfile } from '@/lib/types'
@@ -32,6 +32,16 @@ export function UserCard({ user, isFollowing, isPending, onFollow, onUnfollow }:
         {langDisplay && (
           <p className="text-xs text-gray-400 truncate">{langDisplay}</p>
         )}
+        <div className="flex items-center gap-3 mt-1">
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <Flame className="w-3.5 h-3.5 text-orange-400" />
+            {user.streak_count}
+          </span>
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <BookOpen className="w-3.5 h-3.5 text-brand-400" />
+            {user.stories_completed_total}
+          </span>
+        </div>
       </div>
 
       {/* Follow / Unfollow */}

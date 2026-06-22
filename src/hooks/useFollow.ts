@@ -30,7 +30,7 @@ export function useFollowing(profileId: string | undefined) {
       // Step 2 — load those profiles (only public fields)
       const { data: profiles, error: profErr } = await supabase
         .from('user_profiles')
-        .select('id, nickname, email, avatar_emoji, account_type, current_learning_language, teaching_languages')
+        .select('id, nickname, email, avatar_emoji, account_type, current_learning_language, teaching_languages, streak_count, stories_completed_total')
         .in('id', ids)
       if (profErr) throw profErr
 
@@ -52,7 +52,7 @@ export function useSearchUsers(rawQuery: string, myProfileId: string | undefined
       const safe = trimmed.replace(/[%_]/g, '')
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, nickname, email, avatar_emoji, account_type, current_learning_language, teaching_languages')
+        .select('id, nickname, email, avatar_emoji, account_type, current_learning_language, teaching_languages, streak_count, stories_completed_total')
         .or(`nickname.ilike.%${safe}%,email.ilike.%${safe}%`)
         .neq('id', myProfileId!)   // exclude self
         .limit(15)
