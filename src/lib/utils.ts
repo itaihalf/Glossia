@@ -33,11 +33,12 @@ export function getLanguageFlag(code: string): string {
 
 export function getLevelLabel(level: string): string {
   const map: Record<string, string> = {
-    complete_beginner: 'Complete Beginner',
-    beginner: 'Beginner',
-    novice: 'Novice',
-    intermediate: 'Intermediate',
-    advanced: 'Advanced',
+    // Legacy slugs — see LANGUAGE_LEVELS in constants.ts
+    complete_beginner: 'Basics',
+    beginner: 'Novice',
+    novice: 'Intermediate',
+    intermediate: 'Advanced',
+    advanced: 'Expert',
   }
   return map[level] ?? level
 }

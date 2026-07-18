@@ -19,12 +19,16 @@ export const SUPPORTED_LANGUAGES = [
 
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number]['code']
 
+// NOTE: the stored `value` slugs are legacy and no longer match their labels.
+// They are kept as-is because they are persisted in the DB (classes.level,
+// stories.level, profiles.language_levels). Levels are ordered lowest → highest,
+// so the slug's position — not its name — is what carries the meaning.
 export const LANGUAGE_LEVELS = [
-  { value: 'complete_beginner', label: 'Complete Beginner', description: 'No prior knowledge' },
-  { value: 'beginner',          label: 'Beginner',          description: 'Basic words and phrases' },
-  { value: 'novice',            label: 'Novice',            description: 'Simple sentences' },
-  { value: 'intermediate',      label: 'Intermediate',      description: 'Everyday conversations' },
-  { value: 'advanced',          label: 'Advanced',          description: 'Complex topics with ease' },
+  { value: 'complete_beginner', label: 'Basics',       description: 'Reads simple sentences and familiar vocabulary' },
+  { value: 'beginner',          label: 'Novice',       description: 'Reads short texts slowly and follows basic stories' },
+  { value: 'novice',            label: 'Intermediate', description: 'Reads everyday articles and longer dialogues' },
+  { value: 'intermediate',      label: 'Advanced',     description: 'Reads complex narratives and diverse vocabulary' },
+  { value: 'advanced',          label: 'Expert',       description: 'Effortlessly reads native-level, nuanced material' },
 ] as const
 
 export const INTERESTS = [
