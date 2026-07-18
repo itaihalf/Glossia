@@ -159,17 +159,20 @@ export function CreateStorySheet({ open, onClose, profile }: CreateStorySheetPro
 
       {/* ── GENERATING phase ─────────────────────────────────────────────────── */}
       {phase.t === 'generating' && (
-        <div className="flex flex-col items-center gap-4 py-10">
+        <div className="flex flex-col items-center gap-4 py-6">
           <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center">
             <Sparkles className="w-8 h-8 text-brand-500 animate-pulse" />
           </div>
-          <LoadingSpinner size="md" />
           <div className="text-center">
             <p className="font-semibold text-gray-800 mb-1">Writing your story…</p>
             <p className="text-sm text-gray-400">
               Crafting a {length.replace('_', ' ')} story in {getLanguageName(lang)}
             </p>
           </div>
+
+          {/* The response streams in behind the scenes; the text is only shown
+              once the story is complete (we navigate away at that point). */}
+          <LoadingSpinner size="md" />
         </div>
       )}
 

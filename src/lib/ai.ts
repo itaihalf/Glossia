@@ -102,7 +102,8 @@ const WORD_BANK_LIMITS: Record<'very_short' | 'short' | 'medium' | 'long', numbe
   long:       13,
 }
 
-const AI_ENDPOINT = '/.netlify/functions/generate'
+// Netlify Edge Function — routed in netlify.toml. Keep the two in sync.
+const AI_ENDPOINT = '/api/generate'
 
 interface AiRequest {
   prompt: string
@@ -112,7 +113,14 @@ interface AiRequest {
   reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
-/** Calls our Netlify function, which holds the OpenAI API key server-side. */
+/**
+ * Calls our Netlify edge function (which holds the OpenAI API key server-side)
+ * and consumes the streamed token response. We accumulate the deltas and return
+ * the complete text once the stream closes.
+ *
+ * The stream may contain leading whitespace keepalive bytes emitted while the
+ * model is still reasoning; JSON.parse ignores them and generateText() trims.
+ */
 async function callAi(request: AiRequest): Promise<string> {
   const response = await fetch(AI_ENDPOINT, {
     method: 'POST',
@@ -120,13 +128,22 @@ async function callAi(request: AiRequest): Promise<string> {
     body: JSON.stringify(request),
   })
 
-  if (!response.ok) {
+  // Errors are returned as a normal (non-streamed) JSON body.
+  if (!response.ok || !response.body) {
     const { error } = await response.json().catch(() => ({ error: undefined }))
     throw new Error(error || 'AI request failed. Please try again.')
   }
 
-  const { content } = await response.json() as { content?: string }
-  return content ?? ''
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    text += decoder.decode(value, { stream: true })
+  }
+  text += decoder.decode() // flush any buffered multi-byte char
+  return text
 }
 
 async function generateJson<T>(prompt: string, model = STORY_MODEL): Promise<T> {
@@ -232,7 +249,7 @@ Return ONLY this JSON (no markdown, no extra keys):
   "translation": "<full English translation, same paragraph count, separated by \\n\\n>"
 }`
 
-  const parsed = await generateJson<GeneratedStory>(prompt)
+  const parsed = await generateJson<GeneratedStory>(prompt, STORY_MODEL)
   if (!parsed.title || !parsed.content || !parsed.translation) {
     throw new Error('AI returned an unexpected format. Please try again.')
   }
@@ -297,7 +314,7 @@ Return ONLY this JSON (no markdown, no extra keys):
   "translation": "<revised English translation, same paragraph count, separated by \\n\\n>"
 }`
 
-  const result = await generateJson<GeneratedStory>(prompt)
+  const result = await generateJson<GeneratedStory>(prompt, STORY_MODEL)
   if (!result.title || !result.content) throw new Error('AI returned an unexpected format.')
   return result
 }

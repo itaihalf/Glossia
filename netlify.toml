@@ -1,0 +1,17 @@
+# This file intentionally declares ONLY edge function routing.
+#
+# There was no netlify.toml in this repo before, which means the build command
+# and publish directory come from the Netlify UI. Any [build] block added here
+# would silently override those UI settings, so keep build config out of this
+# file unless you're deliberately moving it into version control.
+
+# Story + translation generation. Lives on the edge runtime because the
+# serverless function was hitting the wall-clock execution limit while waiting
+# on long OpenAI streaming responses.
+#
+# NOTE: /.netlify/functions/* is reserved for the serverless namespace and
+# cannot be claimed by an edge function, hence the /api/ path. Kept in sync
+# with AI_ENDPOINT in src/lib/ai.ts.
+[[edge_functions]]
+  path = "/api/generate"
+  function = "generate"

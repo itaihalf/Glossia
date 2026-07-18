@@ -237,12 +237,14 @@ export function TeacherStorySheet({ open, onClose, classId, teacherId, classLang
 
       {/* ── Generating ──────────────────────────────────────────────────────── */}
       {phase.t === 'generating' && (
-        <div className="flex flex-col items-center gap-4 py-10">
+        <div className="flex flex-col items-center gap-4 py-6">
           <Sparkles className="w-10 h-10 text-brand-400 animate-pulse" />
-          <LoadingSpinner size="md" />
           <p className="text-sm text-gray-500 text-center">
             Writing a {getLevelLabel(level)} story in {getLanguageName(classLanguage)}…
           </p>
+          {/* The response streams in behind the scenes; the story is only
+              rendered once it's complete, in the draft editor. */}
+          <LoadingSpinner size="md" />
         </div>
       )}
 
@@ -340,6 +342,15 @@ function DraftEditor({ story, reviseInstr, setReviseInstr, isRevising, isSending
             Apply
           </Button>
         </div>
+
+        {/* The revision streams in behind the scenes; the revised text replaces
+            the editor contents only once it's complete. */}
+        {isRevising && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+            <LoadingSpinner size="sm" />
+            <span>Revising…</span>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
