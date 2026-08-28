@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { getTodayStr, getYesterdayStr, getISOWeek, getIsraelWeekNumber, isConsecutiveWeek } from '@/lib/utils'
-import type { Story, UserProfile } from '@/lib/types'
+import type { Story, UsedWord, UserProfile } from '@/lib/types'
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ export interface CreateStoryInput {
   level: string
   length: string
   interests_used: string[]
-  words_used_from_bank: string[]
+  words_used_from_bank: UsedWord[]
 }
 
 export function useCreateStory() {

@@ -1,4 +1,6 @@
 import { getLanguageName } from './utils'
+import { containsTokenRun, splitWords, tokenizeWords } from './words'
+import type { UsedWord } from './types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,9 +34,15 @@ export interface GeneratedStory {
   translation: string
 }
 
+/** Story JSON as returned by the model, before we verify its used-word report. */
+interface GeneratedStoryRaw extends GeneratedStory {
+  /** {word, forms} pairs the model reports it wove in — unverified. */
+  used_words?: unknown
+}
+
 export interface GenerateStoryResult extends GeneratedStory {
-  /** IDs of the word-bank entries actually woven into the prompt. */
-  usedWordIds: string[]
+  /** Word-bank entries verified to be in the story, with their surface forms. */
+  usedWords: UsedWord[]
   /** The interest value chosen for the theme, or null (topic-driven / none). */
   interestUsed: string | null
 }
@@ -177,6 +185,86 @@ Return ONLY the base dictionary English translation of the word based on its con
 
 // ─── Story generation ─────────────────────────────────────────────────────────
 
+/** Narrows an unknown JSON value to a trimmed non-empty string, or null. */
+function asText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Groups the model's `used_words` report by base form. Tolerates a bare string
+ * where an object was asked for, and a single form where a list was asked for.
+ */
+function collectReportedForms(reported: unknown): Map<string, string[]> {
+  const byWord = new Map<string, string[]>()
+  if (!Array.isArray(reported)) return byWord
+
+  for (const item of reported) {
+    const record = typeof item === 'object' && item !== null
+      ? item as Record<string, unknown>
+      : null
+
+    const word = asText(record ? record.word : item)
+    if (!word) continue
+
+    const rawForms = record?.forms
+    const forms = Array.isArray(rawForms)
+      ? rawForms.map(asText).filter((f): f is string => f !== null)
+      : [asText(rawForms) ?? word]
+
+    byWord.set(word.toLowerCase(), [...(byWord.get(word.toLowerCase()) ?? []), ...forms])
+  }
+
+  return byWord
+}
+
+/**
+ * Turns the model's report into a verified index of the vocabulary the story
+ * actually contains. Nothing is taken on trust: a reported word must be one we
+ * offered, and each reported form must occur in the content as a run of whole
+ * tokens — a substring test would match `es` inside `interesante`. A word the
+ * model used but forgot to report is still caught by its base form.
+ *
+ * Whatever survives drives both the reader's highlighting and the Review
+ * flashcards, which is what keeps those two in step.
+ */
+function resolveUsedWords(
+  offered: Array<{ id?: string; word: string; translation: string }>,
+  reported: unknown,
+  content: string,
+): UsedWord[] {
+  const contentTokens = tokenizeWords(content)
+  const reportedForms = collectReportedForms(reported)
+  const out: UsedWord[] = []
+
+  for (const entry of offered) {
+    const base = entry.word.trim()
+    if (!entry.id || !base) continue
+
+    // Everything reported for this word, plus the base form as a safety net.
+    const candidates = [...(reportedForms.get(base.toLowerCase()) ?? []), base]
+
+    const forms: string[] = []
+    const seen = new Set<string>()
+    for (const candidate of candidates) {
+      const tokens = tokenizeWords(candidate)
+      if (tokens.length === 0) continue
+
+      const key = tokens.join(' ')
+      if (seen.has(key)) continue
+      if (!containsTokenRun(contentTokens, tokens)) continue
+
+      seen.add(key)
+      forms.push(splitWords(candidate).join(' '))
+    }
+
+    if (forms.length > 0) out.push({ id: entry.id, word: base, forms })
+  }
+
+  return out
+}
+
 export async function generateStory(params: GenerateStoryParams): Promise<GenerateStoryResult> {
   const languageName = getLanguageName(params.languageCode)
 
@@ -230,6 +318,18 @@ export async function generateStory(params: GenerateStoryParams): Promise<Genera
     ? `\nLinguistic specification (follow strictly): "${params.linguisticSpec}"\n`
     : ''
 
+  // When vocabulary is offered, ask the model to report which words it wove in
+  // AND how each one is actually spelled in the story. Inflected, conjugated
+  // and prefixed forms rarely match the base form we supplied, so without this
+  // report there is no reliable way to find those words in the finished text.
+  const hasWords = selectedWords.length > 0
+  const usedWordsInstruction = hasWords
+    ? `\n7. In "used_words", report every vocabulary word you actually incorporated. For each one give "word" — the EXACT base form as written in the vocabulary list — and "forms" — every distinct form of it that literally appears in your story, copied character for character from the story text (conjugated, inflected, declined or prefixed as you wrote it). List a form once even if it occurs several times, and list several forms if you varied it. Omit any word you did not use, and never report a form that is not really in the story.`
+    : ''
+  const usedWordsJsonKey = hasWords
+    ? `,\n  "used_words": [{ "word": "<base form from the vocabulary list>", "forms": ["<each distinct form exactly as it appears in the story>"] }]`
+    : ''
+
   const prompt = `You are a language teacher writing a personalised story for a ${languageName} student.
 
 Level: ${levelDescriptions[params.level] ?? params.level}
@@ -240,23 +340,25 @@ Instructions:
 3. Divide into ${paragraphCounts[params.length]} natural paragraphs separated by blank lines.
 4. Provide a paragraph-by-paragraph English translation with EXACTLY the same number of paragraphs.
 5. Title should be in ${languageName}.
-6. Do NOT mix languages within content or translation sections.
+6. Do NOT mix languages within content or translation sections.${usedWordsInstruction}
 
 Return ONLY this JSON (no markdown, no extra keys):
 {
   "title": "<story title in ${languageName}>",
   "content": "<full story in ${languageName}, paragraphs separated by \\n\\n>",
-  "translation": "<full English translation, same paragraph count, separated by \\n\\n>"
+  "translation": "<full English translation, same paragraph count, separated by \\n\\n>"${usedWordsJsonKey}
 }`
 
-  const parsed = await generateJson<GeneratedStory>(prompt, STORY_MODEL)
+  const parsed = await generateJson<GeneratedStoryRaw>(prompt, STORY_MODEL)
   if (!parsed.title || !parsed.content || !parsed.translation) {
     throw new Error('AI returned an unexpected format. Please try again.')
   }
   return {
-    ...parsed,
+    title: parsed.title,
+    content: parsed.content,
+    translation: parsed.translation,
     interestUsed,
-    usedWordIds: selectedWords.map(w => w.id).filter((id): id is string => !!id),
+    usedWords: resolveUsedWords(selectedWords, parsed.used_words, parsed.content),
   }
 }
 

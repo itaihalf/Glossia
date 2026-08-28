@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useStory } from '@/hooks/useStories'
 import { useReviewWord, type ReviewWordResult } from '@/hooks/useWordBank'
 import { supabase } from '@/lib/supabase'
+import { parseUsedWords } from '@/lib/words'
 import { FlashCard } from '@/components/review/FlashCard'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -35,7 +36,7 @@ export default function ReviewPage() {
   const { data: story } = useStory(storyId)
 
   // Fetch the specific word-bank entries used in this story (learning status only)
-  const wordIds: string[] = (story?.words_used_from_bank ?? []) as string[]
+  const wordIds: string[] = parseUsedWords(story?.words_used_from_bank).map(w => w.id)
 
   const { data: wordEntries, isLoading: isLoadingWords } = useQuery({
     queryKey: ['review-words', storyId],

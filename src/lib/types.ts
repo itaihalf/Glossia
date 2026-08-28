@@ -54,6 +54,26 @@ export interface WordBankEntry {
   updated_at: string
 }
 
+/**
+ * One word-bank word a story actually used, with every surface form it takes in
+ * that story's text. Drives both the highlighting in the reader and the Review
+ * flashcards, so the two sets can never disagree.
+ */
+export interface UsedWord {
+  /** word_bank row id */
+  id: string
+  /** Base form, snapshotted at generation time. */
+  word: string
+  /** Verified forms, exactly as they appear in the story content. */
+  forms: string[]
+}
+
+/**
+ * The stories.words_used_from_bank column. Rows written before surface-form
+ * tracking hold a bare array of ids — always read it through parseUsedWords.
+ */
+export type StoryUsedWords = UsedWord[] | string[]
+
 export interface Story {
   id: string
   user_id: string
@@ -66,7 +86,7 @@ export interface Story {
   level: LanguageLevel
   length: StoryLength
   interests_used: string[]
-  words_used_from_bank: string[]
+  words_used_from_bank: StoryUsedWords
   completed: boolean
   due_date: string | null
   is_open: boolean

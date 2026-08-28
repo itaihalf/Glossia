@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { getTodayStr, getYesterdayStr, getISOWeek } from '@/lib/utils'
-import type { Class, VocabularyList, VocabWord, UserProfile } from '@/lib/types'
+import type { Class, VocabularyList, VocabWord, UsedWord, UserProfile } from '@/lib/types'
 
 // ─── Key helpers ─────────────────────────────────────────────────────────────
 
@@ -502,7 +502,7 @@ export function useCreateClassStory() {
       user_id: string; class_id: string; teacher_user_id: string;
       title: string; content: string; translation: string;
       language: string; level: string; length: string;
-      interests_used: string[]; words_used_from_bank: string[];
+      interests_used: string[]; words_used_from_bank: UsedWord[];
       due_date?: string | null; is_open?: boolean;
     }) => {
       const { data, error } = await supabase

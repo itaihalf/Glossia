@@ -85,7 +85,7 @@ export function CreateStorySheet({ open, onClose, profile }: CreateStorySheetPro
         level,
         length,
         interests_used: generated.interestUsed ? [generated.interestUsed] : [],
-        words_used_from_bank: generated.usedWordIds,
+        words_used_from_bank: generated.usedWords,
       })
 
       handleClose()

@@ -6,6 +6,10 @@ import { useStory, useCompleteStory, type CompletionResult } from '@/hooks/useSt
 import { useUpdateReadingStats } from '@/hooks/useClasses'
 import { useAddWord, useWordBankItems, useUpdateWordStatus } from '@/hooks/useWordBank'
 import { normalizeWord, type NormalizedWord } from '@/lib/ai'
+import {
+  WORD_RE, cleanWord, buildHighlightForms, matchFormPositions,
+  parseUsedWords, isLegacyUsedWords,
+} from '@/lib/words'
 import { WordPopupSheet, type WordLookupState, type AddState, type TransferState } from '@/components/stories/WordPopupSheet'
 import { FinishedReadingSheet } from '@/components/stories/FinishedReadingSheet'
 import { FlashcardSession } from '@/components/review/FlashcardSession'
@@ -36,17 +40,21 @@ export default function StoryReaderPage() {
   const { data: learningWords } = useWordBankItems(profile?.id, story?.language ?? '', 'learning')
   const { data: knownWords }    = useWordBankItems(profile?.id, story?.language ?? '', 'known')
 
-  // Practice word set — highlighted in the reader
-  const practiceSet = useMemo(() => {
-    const set = new Set<string>()
-    for (const entry of learningWords ?? []) {
-      set.add(entry.base_form.toLowerCase())
-      for (const form of entry.encountered_forms ?? []) {
-        set.add(form.toLowerCase())
-      }
-    }
-    return set
-  }, [learningWords])
+  // The words this story was built around, with the surface forms they take in
+  // its text. One list feeds both the highlighting below and the Review
+  // flashcards, so a highlighted word is always a reviewed word and vice versa.
+  const usedWords   = useMemo(() => parseUsedWords(story?.words_used_from_bank), [story?.words_used_from_bank])
+  const usedWordIds = useMemo(() => usedWords.map(w => w.id), [usedWords])
+
+  // Forms to highlight. Stories written before surface-form tracking carry ids
+  // only, so they fall back to matching the learning bank verbatim — the old
+  // behaviour, kept so those stories don't lose their highlighting entirely.
+  const practiceForms = useMemo(() => {
+    const forms = isLegacyUsedWords(story?.words_used_from_bank)
+      ? (learningWords ?? []).flatMap(e => [e.base_form, ...(e.encountered_forms ?? [])])
+      : usedWords.flatMap(w => w.forms)
+    return buildHighlightForms(forms)
+  }, [story?.words_used_from_bank, usedWords, learningWords])
 
   // Map of base_form → { id, status } for all saved words
   const wordBankMap = useMemo(() => {
@@ -337,7 +345,7 @@ export default function StoryReaderPage() {
           story={story}
           mode={mode}
           activeWord={activeWord}
-          practiceSet={practiceSet}
+          practiceForms={practiceForms}
           onWordClick={handleWordClick}
         />
 
@@ -418,7 +426,7 @@ export default function StoryReaderPage() {
         <FlashcardSession
           storyId={story.id}
           userId={profile.id}
-          wordIds={(story.words_used_from_bank ?? []) as string[]}
+          wordIds={usedWordIds}
           open={flashcardOpen}
           onDone={() => {
             setFlashcardOpen(false)
@@ -436,13 +444,13 @@ function StoryContent({
   story,
   mode,
   activeWord,
-  practiceSet,
+  practiceForms,
   onWordClick,
 }: {
   story: { content: string; translation: string | null; language: string }
   mode: TranslationMode
   activeWord: string | null
-  practiceSet: Set<string>
+  practiceForms: string[][]
   onWordClick: (word: string, contextText: string) => void
 }) {
   const origParas  = story.content.split('\n\n').filter(p => p.trim())
@@ -469,7 +477,7 @@ function StoryContent({
             text={para}
             rtl={rtl}
             activeWord={activeWord}
-            practiceSet={practiceSet}
+            practiceForms={practiceForms}
             onWordClick={onWordClick}
           />
         ))}
@@ -486,7 +494,7 @@ function StoryContent({
             text={para}
             rtl={rtl}
             activeWord={activeWord}
-            practiceSet={practiceSet}
+            practiceForms={practiceForms}
             onWordClick={onWordClick}
           />
           {transParas[i] && (
@@ -508,27 +516,33 @@ function StoryContent({
 
 // ─── Paragraph with tappable words ───────────────────────────────────────────
 
-// Matches any sequence that contains at least one Unicode letter
-const WORD_RE = /[\p{L}\p{N}]/u
-
-function cleanWord(chunk: string): string {
-  return chunk.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
-}
-
 function StoryParagraph({
   text,
   rtl,
   activeWord,
-  practiceSet,
+  practiceForms,
   onWordClick,
 }: {
   text: string
   rtl: boolean
   activeWord: string | null
-  practiceSet: Set<string>
+  practiceForms: string[][]
   onWordClick: (word: string, contextText: string) => void
 }) {
-  const chunks = text.split(/(\s+)/u).filter(c => c.length > 0)
+  const chunks = useMemo(() => text.split(/(\s+)/u).filter(c => c.length > 0), [text])
+
+  // Highlighting runs over the word chunks as a sequence rather than one chunk
+  // at a time, so a form spanning several words ("ha comido") can match.
+  const highlighted = useMemo(() => {
+    const words: Array<{ chunkIndex: number; token: string }> = []
+    chunks.forEach((chunk, i) => {
+      const clean = cleanWord(chunk)
+      if (clean && WORD_RE.test(clean)) words.push({ chunkIndex: i, token: clean.toLowerCase() })
+    })
+
+    const positions = matchFormPositions(words.map(w => w.token), practiceForms)
+    return new Set(words.filter((_, p) => positions.has(p)).map(w => w.chunkIndex))
+  }, [chunks, practiceForms])
 
   return (
     <p dir={rtl ? 'rtl' : 'ltr'} className={cn('leading-relaxed text-gray-800 text-lg font-serif', rtl && 'text-right')}>
@@ -539,7 +553,7 @@ function StoryParagraph({
         if (!clean || !WORD_RE.test(clean)) return <span key={i}>{chunk}</span>
 
         const isActive   = activeWord === clean
-        const isPractice = practiceSet.has(clean.toLowerCase())
+        const isPractice = highlighted.has(i)
 
         return (
           <button
